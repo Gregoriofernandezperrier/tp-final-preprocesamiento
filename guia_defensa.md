@@ -32,6 +32,12 @@
 - **Bonferroni:** divide el nivel de significación por la cantidad de tests (α/m) para **controlar la tasa de error global**. Es la misma idea de "cuidar la tasa de error global" de las comparaciones múltiples de la Unidad 2 (test de Tukey entre grupos de pingüinos), aplicada a muchos tests en lugar de a pares de grupos. Es conservadora (más difícil rechazar).
 - **En nuestro trabajo:** la tabla de faltantes tiene **13 tests** (5 chi-cuadrado y 8 Wilcoxon). Con Bonferroni el umbral pasa de 0,05 a 0,05/13 ≈ 0,0038. Sin corrección difieren 11 de 13; **con corrección siguen difiriendo 8**. Es decir, la conclusión "no es MCAR" no depende de haber hecho muchas pruebas.
 
+### 1.2c Test de Wilcoxon (suma de rangos, Mann-Whitney)
+- **Qué compara:** si los valores de una variable numérica tienden a ser **mayores en un grupo que en otro**. Ordena todos los datos de menor a mayor (rangos) y mira si los rangos de un grupo se concentran más arriba. H0: las dos distribuciones son iguales; p chico = difieren.
+- **Por qué en vez de la prueba t:** la prueba t compara **medias** y supone datos aproximadamente normales; nuestras variables son **asimétricas y con atípicos** (ingreso, precio, antigüedad), donde la media se distorsiona. Wilcoxon **no supone normalidad** y es poco sensible a los extremos.
+- **Cómo se lee:** compara la distribución completa, no solo la mediana; por eso puede dar significativo aunque las medianas coincidan (como `Time`: mediana 48 en ambos grupos pero p < 0,001).
+- **En nuestro trabajo:** lo usamos para comparar las 8 variables numéricas entre quienes tienen el ingreso faltante y quienes lo informaron (para las 5 categóricas, chi-cuadrado).
+
 ### 1.3 Imputación: media/mediana, kNN, mice
 - **Media/mediana:** reemplaza todos los NA por el mismo número. Rápido pero **subestima la variabilidad** y supone MCAR. En nuestro dato: los 381 ingresos imputados tendrían desvío 0.
 - **kNN (k vecinos más cercanos):** para cada fila con NA busca las **k = 5 filas más parecidas** (en las variables completas) y completa con su promedio (o moda si es categórica). Conserva mejor la estructura de los datos, y funciona con numéricas y categóricas a la vez. Lo usamos (`VIM::kNN`). *Límite:* los valores imputados son "promedios de vecinos", con **menos dispersión** que los reales (en nuestro caso: desvío 38 vs. 81 de los observados).
@@ -174,7 +180,7 @@ Fallan homocedasticidad (Breusch-Pagan) y normalidad (Anderson-Darling, QQ-plot)
 BIC penaliza más la complejidad (log(n) vs. 2) y con n grande evita variables de efecto mínimo. En el lineal, AIC solo descarta `Ingreso_faltante`; BIC deja 7 variables y coincide con el mejor subconjunto (`regsubsets`). El R² ajustado baja solo de 0,6555 a 0,6535: perdemos casi nada y ganamos un modelo simple.
 
 **9. Sacaron `Age` en la logística aunque AIC la conserva. ¿Por qué?**
-BIC descarta `Age` y `Time`; AIC solo `Time`. El test de razón de verosimilitud entre el modelo BIC y el AIC da p = 0,13: `Age` no mejora el ajuste de forma significativa, y el AUC por validación cruzada es igual (0,850). Elegimos por parsimonia. (En una versión previa, con `Seniority` lineal, ese p daba ≈ 0,02; al transformar `Seniority` con log el efecto de la edad dejó de ser relevante: parte de su efecto lo captaba mal la antigüedad.) Con n grande casi cualquier variable da p chico; por eso miramos también la mejora práctica (AUC).
+BIC descarta `Age` y `Time`; AIC solo `Time`. El test de razón de verosimilitud entre el modelo BIC y el AIC da p = 0,13: `Age` no mejora el ajuste de forma significativa, y el AUC por validación cruzada es igual (0,850). Elegimos por parsimonia. Con n grande casi cualquier variable da p chico; por eso miramos también la mejora práctica (AUC).
 
 **10. ¿Por qué `log(1 + Seniority)` en la logística?**
 El efecto de la antigüedad no es lineal: importa mucho pasar de 0 a pocos años y poco pasar de 20 a 25. Con `Seniority` lineal, Hosmer-Lemeshow rechazaba (p = 0,024); con `log(1+Seniority)` p = 0,55 y mejoran AIC y BIC. Además la variable es asimétrica (1,39) con 401 ceros en *train*, igual que `Assets`. Interpretación: duplicar `1 + años` (de 1 a 3 años, o de 3 a 7) **reduce un 32 %** las chances.
@@ -200,8 +206,8 @@ OR de antecedentes = 6,3: tener antecedentes multiplica por 6,3 las **chances** 
 **16. ¿Por qué `Tiene_deuda` sube el riesgo si en el exploratorio no mostraba diferencia?**
 En el exploratorio la comparación es bruta; el modelo **controla** por las demás variables. Quienes tienen deuda tienen más ingreso y patrimonio (que protegen) y eso enmascaraba el efecto; a igualdad de ingresos y activos, tener deuda sí aumenta el riesgo (OR 1,86).
 
-**17. ¿Por qué el efecto de "independiente" bajó de OR 2,2 a 1,4 al incluir `Ingreso_faltante`?**
-Porque quienes no informan ingreso son casi todos de empleo no fijo: parte de lo que antes captaba el tipo de empleo ahora lo capta la señal de ingreso no informado. Mismo fenómeno de "controlar por otras variables".
+**17. ¿Por qué "independiente" pesa poco en el modelo (OR 1,4) si en el exploratorio tenía bastante más riesgo?**
+En el exploratorio los independientes tienen 33 % de mal pagadores contra 21 % de los de empleo fijo, una diferencia bruta. En el modelo el OR es solo 1,4 por un efecto de **confusión**: casi todos los que **no informan ingreso** tienen empleo no fijo, e `Ingreso_faltante` (que tiene un OR ≈ 4) **captura parte de ese efecto**. Al controlar por ella, lo que queda propio del tipo de empleo es menor. Es el mismo fenómeno de "controlar por otras variables" que con `Tiene_deuda`: la comparación bruta mezcla efectos de variables relacionadas entre sí.
 
 **18. ¿Eliminaron outliers? ¿Por qué no?**
 No. Son valores reales (ingreso 959, bien de 11140). Medimos su influencia: Cook máximo 0,019 (lejos de 1); 81 casos con |rstudent| > 3. Quitando los casos influyentes los signos se mantienen. Eliminarlos sería perder información y se preguntaría cómo se eligió el criterio; preferimos regresión robusta.
@@ -252,10 +258,3 @@ El lineal no tiene partición ni evaluación en un conjunto de prueba, así que 
 - **Logística:** *train* 3341 / *test* 1113 · 12 variables, 18 coeficientes · AUC *test* 0,828 [0,802; 0,854], *train* 0,854, validación cruzada 0,850 · Hosmer-Lemeshow *train* p = 0,55, *test* p = 0,03 · corte 0,27 · sens. 75 %, esp. 76 %, VPP 55 %, VPN 88 %, F1 0,63 (corte 0,5: sens. 50 %, exactitud 79 %).
 - **OR:** antecedentes 6,29 · ingreso no informado 4,01 · medio tiempo 3,72 · soltero 1,34 / otro estado civil 2,67 · independiente 1,40 · deuda 1,86 · duplicar ingreso 0,44 · duplicar (1+antigüedad) 0,68 · +10 puntos de % financiado 1,42.
 - **Con/sin `Ingreso_faltante`:** AUC *test* 0,828 vs. 0,822; AUC validación cruzada 0,850 vs. 0,842.
-
-## 6. Qué cambió respecto de la versión anterior (para no confundirse)
-- Se agregó la explicación MCAR/MAR/MNAR y la tabla de evidencia; ya no se dice "no aleatorios" a secas.
-- Se creó `Ingreso_faltante` y entra a la logística (OR ≈ 4), no al lineal.
-- La logística se hace **sin fuga**: partición antes de imputar, *test* imputado con donantes de *train*.
-- Con el modelo sin fuga apareció un desajuste en Hosmer-Lemeshow → se transformó `Seniority` (log) en la logística; el punto de corte pasó de 0,30 a 0,27 y el AUC de prueba de 0,82 a 0,83.
-- Box-Cox: se agregó el IC de λ y la comparación log / raíz / Box-Cox.

@@ -5655,11 +5655,14 @@ I(Time^2)          -0,0002         -0,0002</code></pre>
 <div class="cell">
 <details class="code-fold">
 <summary>Ver código</summary>
-<div class="sourceCode cell-code" id="cb75"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb75-1"><a href="#cb75-1" aria-hidden="true" tabindex="-1"></a>cf <span class="ot">&lt;-</span> <span class="fu">coef</span>(m_pol)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb75"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb75-1"><a href="#cb75-1" aria-hidden="true" tabindex="-1"></a>cf <span class="ot">&lt;-</span> <span class="fu">coef</span>(m_pol)</span>
+<span id="cb75-2"><a href="#cb75-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Formato para LaTeX: coma decimal sin espacio ({,}) y signo explícito</span></span>
+<span id="cb75-3"><a href="#cb75-3" aria-hidden="true" tabindex="-1"></a>tx <span class="ot">&lt;-</span> <span class="cf">function</span>(x, d) <span class="fu">gsub</span>(<span class="st">&quot;.&quot;</span>, <span class="st">&quot;{,}&quot;</span>, <span class="fu">formatC</span>(<span class="fu">abs</span>(x), <span class="at">format =</span> <span class="st">&quot;f&quot;</span>, <span class="at">digits =</span> d, <span class="at">decimal.mark =</span> <span class="st">&quot;.&quot;</span>), <span class="at">fixed =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb75-4"><a href="#cb75-4" aria-hidden="true" tabindex="-1"></a>sg <span class="ot">&lt;-</span> <span class="cf">function</span>(x, d) <span class="fu">paste0</span>(<span class="fu">ifelse</span>(x <span class="sc">&lt;</span> <span class="dv">0</span>, <span class="st">&quot;-&quot;</span>, <span class="st">&quot;+&quot;</span>), <span class="st">&quot; &quot;</span>, <span class="fu">tx</span>(x, d))</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
 <p><span class="math display">\[
-\widehat{\log(\text{Monto})} = 0,225 + 0,74\,\log(\text{Precio}) + 0,0306\,\text{Plazo} -2,1\times 10^{-4}\,\text{Plazo}^2 -0,0017\,\text{Antigüedad} + 0,041\,\text{Antecedentes(sí)} + 0,086\,\text{Indep.} + 0,056\,\text{Medio tiempo} + 0,052\,\text{Otro empleo} + 0,068\,\log(\text{Ingreso}) -0,038\,\text{Deuda(sí)}
+\widehat{\log(\text{Monto})} = 0{,}225 + 0{,}740\,\log(\text{Precio}) + 0{,}0306\,\text{Plazo} - 0{,}00021\,\text{Plazo}^2 - 0{,}0017\,\text{Antigüedad} + 0{,}041\,\text{Antecedentes(sí)} + 0{,}086\,\text{Indep.} + 0{,}056\,\text{Medio tiempo} + 0{,}052\,\text{Otro empleo} + 0{,}068\,\log(\text{Ingreso}) - 0{,}038\,\text{Deuda(sí)}
 \]</span></p>
 </section>
 <section id="tabla-de-coeficientes" class="level2" data-number="5.2">
