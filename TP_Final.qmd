@@ -803,7 +803,7 @@ Con el corte de 0,5 el modelo detecta solo el **`r round(100 * m05["Sensibilidad
 
 ## Limitaciones
 
-- **Mecanismo de los faltantes:** demostramos que no es MCAR y es plausible MAR, pero **MNAR no puede verificarse** con estos datos (por ejemplo, si quienes tienen ingresos muy bajos lo ocultan más). Además, kNN produce valores con menos dispersión que los reales. `Ingreso_faltante` es una señal útil para predecir, pero no explica *por qué* faltaba el dato.
+- **Mecanismo de los faltantes:** demostramos que no es MCAR y es plausible MAR, pero **MNAR no puede verificarse** con estos datos (por ejemplo, si quienes tienen ingresos muy bajos lo ocultan más). Además, kNN completa cada ingreso faltante con el promedio de sus 5 vecinos más parecidos, y los promedios varían menos que los datos reales, por lo que los ingresos imputados tienen menos dispersión que los observados. `Ingreso_faltante` es una señal útil para predecir, pero no explica *por qué* faltaba el dato.
 - **Imputación en el lineal:** la regresión lineal se ajusta con todos los datos y no tiene conjunto de prueba, así que imputar con todas las filas no genera fuga de información; en la logística sí se evitó (imputación de `test` con donantes de `train`).
 - **Falta de contexto:** la fuente no informa moneda, país, año ni cómo se define "mal pagador" o "antecedentes". Los resultados describen esta muestra.
 - **Relación no causal:** son asociaciones observacionales.
