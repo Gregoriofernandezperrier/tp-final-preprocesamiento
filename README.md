@@ -8,7 +8,7 @@ Análisis de **4454 solicitudes de crédito de consumo** (`credit_data` del paqu
 1. **Regresión lineal:** ¿de qué depende el monto que pide una persona?
 2. **Regresión logística:** ¿quién termina siendo mal pagador? (con partición train/test, imputación sin fuga de información, ROC/AUC y punto de corte).
 
-Incluye pre-procesamiento completo (faltantes MCAR/MAR/MNAR e imputación kNN, recodificación, variables derivadas, transformaciones, cambio de escala y atípicos), análisis exploratorio, selección de variables, diagnóstico de supuestos, bootstrap y regresión robusta.
+Incluye pre-procesamiento completo (faltantes MCAR/MAR/MNAR e imputación kNN, recodificación, variables derivadas, transformaciones, cambio de escala y atípicos), análisis exploratorio, selección de variables, diagnóstico de supuestos y bootstrap.
 
 ## Cómo reproducirlo
 **Requisitos:** R (≥ 4.5) y [Quarto](https://quarto.org) (≥ 1.7).
@@ -16,8 +16,8 @@ Incluye pre-procesamiento completo (faltantes MCAR/MAR/MNAR e imputación kNN, r
 Paquetes de R:
 
 ```r
-install.packages(c("ggplot2", "dplyr", "tidyr", "patchwork", "corrplot", "GGally", "VIM", "car", "MASS",
-                   "leaps", "lmtest", "nortest", "boot", "robustbase", "caret", "pROC",
+install.packages(c("ggplot2", "dplyr", "tidyr", "patchwork", "VIM", "car", "MASS",
+                   "lmtest", "nortest", "boot", "caret", "pROC",
                    "ResourceSelection", "knitr", "rmarkdown", "modeldata"))
 ```
 
@@ -33,6 +33,7 @@ Si Quarto no encuentra R, definir antes `QUARTO_R` con la ruta a `Rscript`. El d
 | Archivo | Descripción |
 |---|---|
 | `TP_Final.qmd` | Documento principal (código + texto). |
+| `TP_Final_completo_backup.qmd` | Copia de seguridad de la versión completa (con Box-Cox, regresión robusta, calibración en test, validación cruzada, etc.), previa a la simplificación. |
 | `TP_Final.html` | Documento renderizado (índice lateral, código plegado); es el que se usa para exponer. |
 | `datos/credit_data_original.csv` | Dataset original, sin modificar. |
 | `datos/credit_procesado.rds` / `.csv` | Versión procesada (imputada, recodificada, con variables derivadas). |
