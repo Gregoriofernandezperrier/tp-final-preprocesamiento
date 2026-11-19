@@ -1,0 +1,13 @@
+# Apuntes de la cátedra (no se suben)
+Material/
+material/
+
+# Temporales de R / Quarto
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+.quarto/
+*_cache/
+*.knit.md
+*.utf8.md
