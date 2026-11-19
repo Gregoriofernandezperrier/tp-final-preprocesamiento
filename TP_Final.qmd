@@ -29,8 +29,8 @@ library(dplyr)
 library(patchwork)
 library(corrplot)
 library(GGally)
-library(VIM)        # aggr, kNN
-library(car)        # vif, crPlots
+library(VIM)        # kNN
+library(car)        # vif
 library(MASS)       # stepAIC, boxcox
 library(leaps)      # regsubsets
 library(lmtest)     # bptest, lrtest
@@ -147,13 +147,10 @@ sapply(base[, c("Status", "Home", "Marital", "Records", "Job")],
 ## Tratamiento de datos faltantes
 
 ```{r}
-#| fig-height: 4
 faltantes <- data.frame(Variable = names(orig), N_faltantes = colSums(is.na(orig)),
-                        Porcentaje = round(100 * colMeans(is.na(orig)), 2), row.names = NULL)
+                        Porcentaje = round(colSums(is.na(orig)) / nrow(orig) * 100, 2), row.names = NULL)
 faltantes <- faltantes[faltantes$N_faltantes > 0, ]
 knitr::kable(faltantes, row.names = FALSE, caption = "Variables con datos faltantes")
-aggr(base[, names(orig)], col = c("steelblue", "tomato"), numbers = TRUE, sortVars = TRUE,
-     labels = names(orig), cex.axis = .6, gap = 3, ylab = c("Proporción de faltantes", "Patrón"))
 n_inc <- sum(is.na(orig$Income))
 ```
 
@@ -171,38 +168,45 @@ Para decidir qué hacer con los faltantes hay que preguntarse **por qué faltan*
 
 ### Evidencia: ¿es MCAR el faltante de `Income`?
 
-Si fuera MCAR, quienes **no informaron** el ingreso deberían ser "iguales" en todo lo demás a quienes sí lo informaron. Lo comprobamos (variable `Ingreso_faltante`: 1 = ingreso faltante, 0 = observado), con chi-cuadrado para las categóricas y Wilcoxon para las numéricas (más apropiado que la prueba t porque son asimétricas):
+Si fuera MCAR, ninguna otra variable debería ayudar a predecir si el ingreso falta. Lo comprobamos con la herramienta de la Unidad 5: para cada variable, una **regresión logística simple** con `Ingreso_faltante` como respuesta (1 = ingreso faltante, 0 = observado) y esa variable como única predictora, comparada con el **modelo nulo** (solo el intercepto) mediante el **test de razón de verosimilitud** (`lrtest`). Un p-valor chico indica que la variable *sí* ayuda a explicar la ausencia del ingreso, es decir, que no es MCAR. Las columnas descriptivas muestran cómo difieren los dos grupos.
 
 ```{r}
 base$Ingreso_faltante <- as.integer(is.na(base$Income))   # se crea ANTES de imputar
 fal <- base$Ingreso_faltante == 1
 
+# p-valor del lrtest: modelo con la variable vs. modelo nulo, usando solo las filas donde la variable no es NA
+p_lrt <- function(v) {
+  d <- data.frame(y = base$Ingreso_faltante, x = base[[v]])
+  d <- d[!is.na(d$x), ]
+  lrtest(glm(y ~ 1, family = binomial, data = d), glm(y ~ x, family = binomial, data = d))[2, "Pr(>Chisq)"]
+}
 fila_cat <- function(v, nivel) {
   x <- base[[v]]; ok <- !is.na(x)
-  data.frame(Variable = v, Prueba = "Chi-cuadrado", Medida = paste0("% ", nivel),
+  data.frame(Variable = v, Medida = paste0("% ", nivel),
              Ingreso_observado = 100 * mean(x[ok & !fal] == nivel),
-             Ingreso_faltante = 100 * mean(x[ok & fal] == nivel),
-             p = chisq.test(table(x[ok], fal[ok]))$p.value)
+             Ingreso_faltante = 100 * mean(x[ok & fal] == nivel), p = p_lrt(v))
 }
 fila_num <- function(v) {
   x <- base[[v]]; ok <- !is.na(x)
-  data.frame(Variable = v, Prueba = "Wilcoxon", Medida = "Mediana",
-             Ingreso_observado = median(x[ok & !fal]), Ingreso_faltante = median(x[ok & fal]),
-             p = wilcox.test(x[ok] ~ fal[ok], exact = FALSE)$p.value)
+  data.frame(Variable = v, Medida = "Mediana",
+             Ingreso_observado = median(x[ok & !fal]), Ingreso_faltante = median(x[ok & fal]), p = p_lrt(v))
 }
 evid <- rbind(fila_cat("Status", "malo"), fila_cat("Records", "si"), fila_cat("Job", "fijo"),
               fila_cat("Home", "propia"), fila_cat("Marital", "casado"),
               do.call(rbind, lapply(c("Age", "Seniority", "Time", "Expenses", "Price", "Amount", "Assets", "Debt"), fila_num)))
+umbral_bonf <- 0.05 / nrow(evid)
 evid_tab <- evid
 evid_tab[, c("Ingreso_observado", "Ingreso_faltante")] <- round(evid_tab[, c("Ingreso_observado", "Ingreso_faltante")], 1)
-evid_tab$p <- format.pval(evid$p, digits = 2, eps = 0.001)
+evid_tab$p_lrtest <- format.pval(evid$p, digits = 2, eps = 0.001)
+evid_tab$p <- NULL
 evid_tab$Difiere_al_5pct <- ifelse(evid$p < 0.05, "Sí", "No")
+evid_tab$Difiere_con_Bonferroni <- ifelse(evid$p < umbral_bonf, "Sí", "No")
 knitr::kable(evid_tab, row.names = FALSE,
-             caption = "Solicitantes con ingreso faltante vs. observado (Wilcoxon compara toda la distribución, por eso puede detectar diferencias aunque las medianas coincidan)")
-n_dif <- sum(evid$p < 0.05); n_bonf <- sum(evid$p < 0.05 / nrow(evid))
+             caption = "Ingreso faltante vs. observado: p-valor del test de razón de verosimilitud (regresión logística simple vs. modelo nulo)")
+n_dif <- sum(evid$p < 0.05); n_bonf <- sum(evid$p < umbral_bonf)
 ```
 
-**Conclusión sobre el mecanismo.** Los solicitantes sin ingreso difieren de los demás en `r n_dif` de las `r nrow(evid)` variables comparadas (`r n_bonf` aun aplicando la corrección de Bonferroni por tener tantas pruebas). *La corrección de Bonferroni divide el nivel de significación por la cantidad de tests (acá 0,05 / `r nrow(evid)` = `r round(0.05 / nrow(evid), 4)`) para controlar la tasa de error global cuando se hacen muchas comparaciones; es la misma idea de "cuidar la tasa de error global" de las comparaciones múltiples de la Unidad 2 (test de Tukey), aplicada acá a muchos tests.* Por ejemplo, el `r round(evid$Ingreso_faltante[evid$Variable == "Status"])` % de ellos resulta mal pagador, contra el `r round(evid$Ingreso_observado[evid$Variable == "Status"])` % de quienes informan el ingreso; y el contraste más fuerte es el tipo de empleo: solo el `r round(evid$Ingreso_faltante[evid$Variable == "Job"])` % de quienes no informan ingreso tiene empleo fijo, contra el `r round(evid$Ingreso_observado[evid$Variable == "Job"])` % de quienes sí lo informan. Por lo tanto:
+**Conclusión sobre el mecanismo.** En `r n_dif` de las `r nrow(evid)` variables comparadas el test de razón de verosimilitud indica que ayudan a explicar la ausencia del ingreso (es decir, los solicitantes sin ingreso difieren de los demás) (`r n_bonf` aun aplicando la corrección de Bonferroni por tener tantas pruebas). *La corrección de Bonferroni divide el nivel de significación por la cantidad de tests (acá 0,05 / `r nrow(evid)` = `r round(umbral_bonf, 4)`) para controlar la tasa de error global cuando se hacen muchas comparaciones; es la misma idea de "cuidar la tasa de error global" de las comparaciones múltiples de la Unidad 2 (test de Tukey), aplicada acá a muchos tests.* Por ejemplo, el `r round(evid$Ingreso_faltante[evid$Variable == "Status"])` % de ellos resulta mal pagador, contra el `r round(evid$Ingreso_observado[evid$Variable == "Status"])` % de quienes informan el ingreso; y un contraste muy marcado es el tipo de empleo: solo el `r round(evid$Ingreso_faltante[evid$Variable == "Job"])` % de quienes no informan ingreso tiene empleo fijo, contra el `r round(evid$Ingreso_observado[evid$Variable == "Job"])` % de quienes sí lo informan. Por lo tanto:
 
 - **No es MCAR:** la ausencia del ingreso está relacionada con otras variables.
 - **Es plausible que sea MAR**, porque la ausencia se asocia a variables que sí observamos (resultado del crédito, antecedentes, tipo de empleo, antigüedad, etc.).
@@ -330,7 +334,7 @@ Usamos la regla del boxplot (valores a más de 1,5 rangos intercuartílicos de l
 
 ```{r}
 #| fig-height: 5
-n_atip <- function(x) { q <- quantile(x, c(.25, .75)); r <- IQR(x); sum(x < q[1] - 1.5 * r | x > q[2] + 1.5 * r) }
+n_atip <- function(x) { q <- quantile(x, c(.25, .75)); r <- q[2] - q[1]; sum(x < q[1] - 1.5 * r | x > q[2] + 1.5 * r) }
 vars_at <- c("Seniority", "Age", "Time", "Expenses", "Pct_fin", "log_Price", "log_Income", "log_Assets")
 data.frame(Variable = vars_at, N_atipicos = sapply(cred[vars_at], n_atip),
            Porcentaje = round(100 * sapply(cred[vars_at], n_atip) / nrow(cred), 1), row.names = NULL) |>
@@ -459,8 +463,17 @@ ggpairs(cred[, c("Status", "log_Income", "Seniority", "Pct_fin", "log_Assets")],
 **Respuesta:** `log_Amount` (logaritmo del monto pedido). **Candidatas a predictoras:** `log_Price`, `Time`, `Seniority`, `Age`, `Marital`, `Records`, `Job`, `Expenses`, `log_Income`, `log_Assets`, `Tiene_deuda`, `Home` e `Ingreso_faltante`. No incluimos `Pct_fin` (contiene a la respuesta) ni `Status` (nos interesa el perfil del solicitante *antes* de saber si pagará). Como la regresión lineal no tiene partición en entrenamiento y prueba, usamos `cred` (imputada con todas las filas); es válido porque la imputación **no usó la respuesta** (`Amount`).
 
 ```{r}
+# AIC y BIC calculados como en stepAIC: criterio = -2·logverosimilitud + k·(cantidad de coeficientes), con k = 2 (AIC) o k = log(n) (BIC).
+# Para lm se usa n·log(RSS/n) + k·p (la escala que muestra stepAIC); para glm, el AIC que muestra summary() (m$aic) ajustado por k.
+# Solo importan las diferencias entre modelos: menor = mejor.
+crit_k <- function(m, k) {
+  p <- length(coef(m))
+  if (inherits(m, "glm")) m$aic + (k - 2) * p else { n <- length(residuals(m)); n * log(sum(residuals(m)^2) / n) + k * p }
+}
+aic <- function(m) crit_k(m, 2)
+bic <- function(m) crit_k(m, log(length(residuals(m))))
 resumen <- function(m, nombre) data.frame(Modelo = nombre, Coeficientes = length(coef(m)),
-  AIC = round(AIC(m), 1), BIC = round(BIC(m), 1), R2_ajustado = round(summary(m)$adj.r.squared, 4))
+  AIC = round(aic(m), 1), BIC = round(bic(m), 1), R2_ajustado = round(summary(m)$adj.r.squared, 4))
 pv <- function(p) format.pval(p, digits = 2, eps = 0.001)
 fmt <- function(x) formatC(x, digits = 3, format = "fg", flag = "#")   # 3 cifras significativas
 pct <- function(b) round(100 * (exp(b) - 1), 1)                       # efecto en % de un coeficiente en escala log
@@ -506,18 +519,26 @@ R² ajustado y Cp casi no mejoran a partir de pocas variables (R² ajustado: `r 
 
 ```{r}
 m_nulo <- lm(log_Amount ~ 1, data = cred)
-fwd_aic <- stepAIC(m_nulo, scope = list(lower = ~ 1, upper = f_full), direction = "forward", trace = 0)
+fwd_aic <- stepAIC(m_nulo, scope = list(lower = m_nulo, upper = m_full), direction = "forward", trace = 0)
 bwd_aic <- stepAIC(m_full, direction = "backward", trace = 0)
 bwd_bic <- stepAIC(m_full, direction = "backward", k = log(nrow(cred)), trace = 0)
 rbind(resumen(m_full, "Completo"), resumen(fwd_aic, "Forward (AIC)"), resumen(bwd_aic, "Backward (AIC)"),
       resumen(bwd_bic, "Backward (BIC)")) |> knitr::kable(caption = "Comparación de métodos de selección")
-terminos <- function(m) attr(terms(m), "term.labels")
-descartadas <- function(m) setdiff(terminos(f_full), terminos(m))
-formula(bwd_bic)
+
+# Modelo elegido por BIC, escrito explícitamente (se verifica que coincide con el que devolvió stepAIC)
+f_bic <- log_Amount ~ log_Price + Time + Seniority + Records + Job + log_Income + Tiene_deuda
+n_var <- function(f) length(strsplit(as.character(f)[3], " + ", fixed = TRUE)[[1]])   # cantidad de variables de una fórmula
+stopifnot(setequal(names(coef(lm(f_bic, data = cred))), names(coef(bwd_bic))),
+          !any(grepl("^(Age|Marital|Expenses|log_Assets|Home|Ingreso_faltante)", names(coef(bwd_bic)))),
+          length(coef(bwd_aic)) == length(coef(m_full)) - 1, length(coef(fwd_aic)) == length(coef(m_full)) - 1,
+          !("Ingreso_faltante" %in% c(names(coef(bwd_aic)), names(coef(fwd_aic)))))
+f_bic
 ```
 
-- **AIC** (forward y backward) descarta solo: `r paste(descartadas(bwd_aic), collapse = ", ")`. AIC penaliza poco, por eso conserva casi todo.
-- **BIC** descarta: `r paste(descartadas(bwd_bic), collapse = ", ")` y deja **`r length(terminos(bwd_bic))` variables**. Coincide con el mejor subconjunto por BIC: dos métodos distintos llegan al mismo modelo.
+*(AIC y BIC se calculan como en `stepAIC`; en el modelo lineal esa escala da valores negativos. No importa el valor absoluto sino la diferencia entre modelos: menor es mejor.)*
+
+- **AIC** (forward y backward) descarta solo `Ingreso_faltante`. AIC penaliza poco, por eso conserva casi todo.
+- **BIC** descarta `Age`, `Marital`, `Expenses`, `log_Assets`, `Home` e `Ingreso_faltante`, y deja **`r n_var(f_bic)` variables**. Coincide con el mejor subconjunto por BIC: dos métodos distintos llegan al mismo modelo.
 - **`Ingreso_faltante` no entra** en ninguno de los modelos seleccionados (en el lineal, no informar el ingreso no se asocia con el monto pedido una vez considerado el resto).
 
 **Decisión:** elegimos el **modelo BIC**: tiene `r length(coef(bwd_bic))` coeficientes frente a `r length(coef(m_full))`, y su R² ajustado baja de `r round(summary(m_full)$adj.r.squared, 4)` a `r round(summary(bwd_bic)$adj.r.squared, 4)`. Pierde casi nada y es mucho más fácil de explicar. Las variables descartadas tienen efectos chicos (con AIC se habrían conservado, pero buscamos los determinantes principales).
@@ -530,7 +551,7 @@ m_bic <- bwd_bic
 
 ```{r}
 #| fig-height: 4
-dg <- data.frame(ajustado = fitted(m_bic), residuo = resid(m_bic), rstud = rstudent(m_bic))
+dg <- data.frame(ajustado = fitted.values(m_bic), residuo = residuals(m_bic), rstud = rstudent(m_bic))
 g1 <- ggplot(dg, aes(ajustado, residuo)) + geom_point(alpha = .3, color = "steelblue") +
   geom_hline(yintercept = 0, color = "tomato") +
   labs(title = "Residuos vs. valores ajustados", x = "Valor ajustado", y = "Residuo")
@@ -540,7 +561,7 @@ g1 | g2
 ```
 
 ```{r}
-bp1 <- bptest(m_bic); ad1 <- ad.test(resid(m_bic)); asim1 <- asim(resid(m_bic))
+bp1 <- bptest(m_bic); ad1 <- ad.test(residuals(m_bic)); asim1 <- asim(residuals(m_bic))
 bp1
 ad1
 cat("Asimetría de los residuos:", round(asim1, 2), "\n")
@@ -549,24 +570,32 @@ cat("Asimetría de los residuos:", round(asim1, 2), "\n")
 - **Homocedasticidad: no se cumple.** La dispersión de los residuos no es constante (es mayor y más asimétrica en la zona central de valores ajustados, con muchos residuos muy negativos). Las **bandas diagonales** aparecen porque los montos pedidos son valores "redondos" (500, 1000, 1500...) y el monto nunca supera al precio. Breusch-Pagan rechaza (p `r pv(bp1$p.value)`).
 - **Normalidad: no se cumple.** El QQ-plot se aleja de la recta en la cola izquierda y Anderson-Darling rechaza (p `r pv(ad1$p.value)`). La asimetría de los residuos es **negativa y fuerte** (`r round(asim1, 2)`): hay solicitantes que piden mucho menos de lo esperado.
 - **Independencia:** los datos no tienen orden temporal ni agrupamiento, así que **Durbin-Watson no tiene sentido** y no se aplica.
-- **Linealidad:** la revisamos con gráficos de residuos parciales (la curva rosa debería parecerse a la recta azul):
+- **Linealidad:** la revisamos graficando los residuos contra cada predictora numérica con una curva suavizada (si la relación es lineal, la curva debería ser aproximadamente una recta horizontal en 0):
 
 ```{r}
 #| fig-height: 5
-crPlots(m_bic, terms = ~ log_Price + Time + Seniority + log_Income, layout = c(2, 2))
+rp <- data.frame(residuo = residuals(m_bic), log_Price = cred$log_Price, Time = cred$Time,
+                 Seniority = cred$Seniority, log_Income = cred$log_Income)
+rp |> tidyr::pivot_longer(-residuo, names_to = "Predictora", values_to = "valor") |>
+  ggplot(aes(valor, residuo)) + geom_point(alpha = .2, color = "steelblue") +
+  geom_hline(yintercept = 0, color = "tomato", linetype = "dashed") +
+  geom_smooth(se = FALSE, color = "darkblue") +
+  facet_wrap(~ Predictora, scales = "free_x") +
+  labs(title = "Residuos vs. cada predictora numérica", x = NULL, y = "Residuo")
 ```
 
-`Seniority` e `log_Income` son razonablemente lineales y `log_Price` tiene una curvatura muy leve en los extremos. **`Time` muestra curvatura clara**: el monto crece con el plazo pero cada vez más lento. Agregamos un **término cuadrático** `I(Time^2)`:
+En `Seniority`, `log_Income` y `log_Price` la curva suavizada es casi una recta horizontal en 0: la relación es razonablemente lineal. **`Time` muestra curvatura clara**: los residuos tienen forma de "U invertida" (el modelo lineal sobreestima los plazos muy cortos y muy largos y subestima los intermedios), es decir, el monto crece con el plazo pero cada vez más lento. Agregamos un **término cuadrático** `I(Time^2)`:
 
 ```{r}
-m_pol <- update(m_bic, . ~ . + I(Time^2))
+f_pol <- log_Amount ~ log_Price + Time + I(Time^2) + Seniority + Records + Job + log_Income + Tiene_deuda
+m_pol <- lm(f_pol, data = cred)
 an_pol <- anova(m_bic, m_pol)
 an_pol
 rbind(resumen(m_bic, "BIC (lineal en Time)"), resumen(m_pol, "BIC + Time al cuadrado")) |> knitr::kable()
-bp2 <- bptest(m_pol); ad2 <- ad.test(resid(m_pol))
+bp2 <- bptest(m_pol); ad2 <- ad.test(residuals(m_pol))
 ```
 
-El término cuadrático es significativo (p `r pv(an_pol[2, "Pr(>F)"])`) y mejora AIC y BIC (BIC: `r round(BIC(m_bic))` → `r round(BIC(m_pol))`); lo incorporamos. Corrige la linealidad, pero **la heterocedasticidad (p `r pv(bp2$p.value)`) y la no normalidad (p `r pv(ad2$p.value)`) persisten**: no son un problema de forma funcional sino del comportamiento de los datos (se discute en la próxima sección).
+El término cuadrático es significativo (p `r pv(an_pol[2, "Pr(>F)"])`) y mejora AIC y BIC (BIC: `r formatC(bic(m_bic), format = "f", digits = 0)` → `r formatC(bic(m_pol), format = "f", digits = 0)`, una mejora de `r formatC(bic(m_bic) - bic(m_pol), format = "f", digits = 0)` puntos); lo incorporamos. Corrige la linealidad, pero **la heterocedasticidad (p `r pv(bp2$p.value)`) y la no normalidad (p `r pv(ad2$p.value)`) persisten**: no son un problema de forma funcional sino del comportamiento de los datos (se discute en la próxima sección).
 
 ## ¿Es el logaritmo la transformación adecuada para la respuesta?
 
@@ -574,10 +603,12 @@ Box-Cox estima la potencia λ que mejor "normaliza" la respuesta (λ = 0 equival
 
 ```{r}
 #| fig-height: 4
-m_bc0 <- update(m_pol, Amount ~ .)
+m_bc0 <- lm(Amount ~ log_Price + Time + I(Time^2) + Seniority + Records + Job + log_Income + Tiene_deuda, data = cred)
 bc <- boxcox(m_bc0, lambda = seq(-0.5, 1, 0.01))
 lambda_bc <- bc$x[which.max(bc$y)]
-ic_bc <- range(bc$x[bc$y > max(bc$y) - qchisq(0.95, 1) / 2])   # IC 95 % de lambda
+# IC 95 % de lambda: valores cuya log-verosimilitud no cae más de 1,92 (= 3,84 / 2, valor crítico de chi-cuadrado
+# con 1 gl al 95 %) respecto del máximo; es la línea punteada "95%" del gráfico
+ic_bc <- range(bc$x[bc$y > max(bc$y) - 1.92])
 ```
 
 El λ óptimo es **`r round(lambda_bc, 2)`**, con IC del 95 % de **`r round(ic_bc[1], 2)` a `r round(ic_bc[2], 2)`**. El intervalo es angosto (n grande) y **no incluye al 0 (log) ni al 0,5 (raíz)**: estrictamente, ninguna de las dos es "la óptima". La pregunta práctica es si cambia algo. Comparamos tres versiones del modelo final con distinta transformación de la respuesta:
@@ -585,17 +616,17 @@ El λ óptimo es **`r round(lambda_bc, 2)`**, con IC del 95 % de **`r round(ic_b
 ```{r}
 dd <- cred
 dd$y_log <- log(dd$Amount); dd$y_raiz <- sqrt(dd$Amount); dd$y_bc <- (dd$Amount^lambda_bc - 1) / lambda_bc
-mods <- list("log(Amount)" = update(m_pol, y_log ~ ., data = dd),
-             "sqrt(Amount)" = update(m_pol, y_raiz ~ ., data = dd),
-             "Box-Cox" = update(m_pol, y_bc ~ ., data = dd))
+mods <- list("log(Amount)" = lm(y_log ~ log_Price + Time + I(Time^2) + Seniority + Records + Job + log_Income + Tiene_deuda, data = dd),
+             "sqrt(Amount)" = lm(y_raiz ~ log_Price + Time + I(Time^2) + Seniority + Records + Job + log_Income + Tiene_deuda, data = dd),
+             "Box-Cox" = lm(y_bc ~ log_Price + Time + I(Time^2) + Seniority + Records + Job + log_Income + Tiene_deuda, data = dd))
 estrellas <- function(p) as.character(cut(p, c(-Inf, .001, .01, .05, Inf), labels = c("***", "**", "*", "ns")))
 
 # (a) métricas de ajuste y de residuos
 met_tr <- data.frame(Respuesta = names(mods),
   R2_ajustado = sapply(mods, function(m) round(summary(m)$adj.r.squared, 3)),
-  Asimetria_residuos = sapply(mods, function(m) round(asim(resid(m)), 2)),
+  Asimetria_residuos = sapply(mods, function(m) round(asim(residuals(m)), 2)),
   p_Breusch_Pagan = sapply(mods, function(m) pv(bptest(m)$p.value)),
-  p_Anderson_Darling = sapply(mods, function(m) pv(ad.test(resid(m))$p.value)), row.names = NULL)
+  p_Anderson_Darling = sapply(mods, function(m) pv(ad.test(residuals(m))$p.value)), row.names = NULL)
 knitr::kable(met_tr, caption = "Tres transformaciones de la respuesta (mismo modelo final)")
 
 # (b) signo y significancia de cada coeficiente
@@ -643,7 +674,7 @@ Ninguna observación tiene una distancia de Cook cercana a 1 (el máximo es `r s
 
 ```{r}
 fuera <- abs(infl$rstud) > 3 | infl$cook > 4 / n
-m_sin <- update(m_pol, data = cred[!fuera, ])
+m_sin <- lm(f_pol, data = cred[!fuera, ])
 round(cbind(Con_todos = coef(m_pol), Sin_influyentes = coef(m_sin)), 4)
 ```
 
@@ -658,7 +689,6 @@ Como la heterocedasticidad y la no normalidad persisten, los intervalos y tests 
 
 ```{r}
 set.seed(2024)
-f_pol <- formula(m_pol)
 bt <- boot(cred, function(d, i) coef(lm(f_pol, data = d[i, ])), R = 1000)
 ci_boot <- t(sapply(seq_along(coef(m_pol)), function(j) boot.ci(bt, type = "perc", index = j)$percent[4:5]))
 m_rob <- lmrob(f_pol, data = cred)
@@ -783,26 +813,38 @@ Usamos `log_Seniority = log(1 + Seniority)` en lugar de `Seniority` (se justific
 ```{r}
 g_aic <- stepAIC(g_full, direction = "both", trace = 0)
 g_bic <- stepAIC(g_full, direction = "both", k = log(nrow(train)), trace = 0)
-g_bic0 <- stepAIC(update(g_full, . ~ . - Ingreso_faltante), direction = "both", k = log(nrow(train)), trace = 0)
+# Candidatas sin Ingreso_faltante (para medir su aporte)
+f_log0 <- Status ~ log_Seniority + Age + Marital + Records + Job + Expenses + log_Income + log_Assets +
+  Tiene_deuda + Home + Time + log_Price + Pct_fin
+g_bic0 <- stepAIC(glm(f_log0, family = binomial, data = train), direction = "both", k = log(nrow(train)), trace = 0)
+
+# Modelos elegidos, escritos explícitamente (se verifica que coinciden con los que devolvió stepAIC)
+f_aic <- Status ~ log_Seniority + Age + Marital + Records + Job + Expenses + log_Income + log_Assets +
+  Tiene_deuda + Home + log_Price + Pct_fin + Ingreso_faltante
+f_bic_log <- Status ~ log_Seniority + Marital + Records + Job + Expenses + log_Income + log_Assets +
+  Tiene_deuda + Home + log_Price + Pct_fin + Ingreso_faltante
+f_bic0 <- Status ~ log_Seniority + Marital + Records + Job + Expenses + log_Income + log_Assets +
+  Tiene_deuda + Home + log_Price + Pct_fin
+mismos_coef <- function(f, m) setequal(names(coef(glm(f, family = binomial, data = train))), names(coef(m)))
+stopifnot(mismos_coef(f_aic, g_aic), mismos_coef(f_bic_log, g_bic), mismos_coef(f_bic0, g_bic0))
 
 ctrl <- trainControl(method = "cv", number = 10, classProbs = TRUE, summaryFunction = twoClassSummary)
-cv_auc <- function(m) { set.seed(2024)
-  train(formula(m), data = train, method = "glm", family = binomial, trControl = ctrl, metric = "ROC")$results$ROC }
+cv_auc <- function(f) { set.seed(2024)
+  train(f, data = train, method = "glm", family = binomial, trControl = ctrl, metric = "ROC")$results$ROC }
 mods_log <- list("Completo (14 candidatas)" = g_full, "stepAIC" = g_aic, "stepBIC" = g_bic,
                  "stepBIC sin Ingreso_faltante" = g_bic0)
+f_mods <- list(f_log, f_aic, f_bic_log, f_bic0)
 tab_mod <- data.frame(Modelo = names(mods_log), Coeficientes = sapply(mods_log, function(m) length(coef(m))),
-                      AIC = round(sapply(mods_log, AIC), 1), BIC = round(sapply(mods_log, BIC), 1),
-                      AUC_CV_train = round(sapply(mods_log, cv_auc), 4), row.names = NULL)
+                      AIC = round(sapply(mods_log, aic), 1), BIC = round(sapply(mods_log, bic), 1),
+                      AUC_CV_train = round(sapply(f_mods, cv_auc), 4), row.names = NULL)
 knitr::kable(tab_mod, caption = "Modelos candidatos (todo calculado con el conjunto de entrenamiento)")
-terms_l <- function(m) attr(terms(m), "term.labels")
-descartadas_l <- function(m) setdiff(terms_l(f_log), terms_l(m))
-formula(g_bic)
+n_var_log <- function(f) length(strsplit(as.character(f)[3], " + ", fixed = TRUE)[[1]])
 lr_edad <- lrtest(g_bic, g_aic)
 lr_ing <- lrtest(g_bic0, g_bic)
 lr_edad; lr_ing
 ```
 
-- **BIC descarta:** `r paste(descartadas_l(g_bic), collapse = " y ")`. **AIC descarta:** `r paste(descartadas_l(g_aic), collapse = " y ")`. `Ingreso_faltante` **queda en ambos**.
+- **BIC descarta** `Age` y `Time`. **AIC descarta** solo `Time`. `Ingreso_faltante` **queda en ambos**.
 - El **test de razón de verosimilitud** (que contrasta si las variables extra mejoran el ajuste) entre el modelo BIC y el AIC da p = `r round(lr_edad[2, "Pr(>Chisq)"], 2)`: `r ifelse(lr_edad[2, "Pr(>Chisq)"] > 0.05, "las variables que solo el AIC conserva no mejoran el ajuste de forma significativa", "la diferencia es estadísticamente detectable pero chica en términos prácticos")` (AUC por validación cruzada de `r f3(tab_mod$AUC_CV_train[3])` contra `r f3(tab_mod$AUC_CV_train[2])`). Con muchos datos casi cualquier variable termina "significativa", así que elegimos por **parsimonia: modelo BIC**.
 - Agregar `Ingreso_faltante` mejora el ajuste de forma contundente (razón de verosimilitud: p `r pv(lr_ing[2, "Pr(>Chisq)"])`) y sube el AUC por validación cruzada de `r f3(tab_mod$AUC_CV_train[4])` a `r f3(tab_mod$AUC_CV_train[3])`.
 
@@ -811,17 +853,19 @@ g_fin <- g_bic
 lrtest(g_fin, glm(Status ~ 1, family = binomial, data = train))   # modelo final vs. solo intercepto
 ```
 
-El modelo final es **muy superior al modelo sin predictoras**. Son `r length(coef(g_fin)) - 1` coeficientes (sin el intercepto) para `r length(terms_l(g_fin))` variables.
+El modelo final es **muy superior al modelo sin predictoras**. Son `r length(coef(g_fin)) - 1` coeficientes (sin el intercepto) para `r n_var_log(f_bic_log)` variables.
 
 **¿Por qué `log(1 + Seniority)`?** Al revisar la bondad de ajuste (más abajo) con `Seniority` en su escala original, Hosmer-Lemeshow detectaba un desajuste. El efecto de la antigüedad no es lineal en el log-odds: importa mucho pasar de 0 a unos pocos años y poco pasar de 20 a 25. Con el logaritmo (la variable tiene asimetría `r round(asim(train$Seniority), 2)` y `r sum(train$Seniority == 0)` ceros, igual que `Assets`) el ajuste mejora:
 
 ```{r}
-g_sen_lin <- glm(update(formula(g_fin), . ~ . - log_Seniority + Seniority), family = binomial, data = train)
+f_sen_lin <- Status ~ Seniority + Marital + Records + Job + Expenses + log_Income + log_Assets +
+  Tiene_deuda + Home + log_Price + Pct_fin + Ingreso_faltante     # igual al modelo final, pero con Seniority lineal
+g_sen_lin <- glm(f_sen_lin, family = binomial, data = train)
 y_tr <- as.integer(train$Status == "malo")
-hl_lin <- hoslem.test(y_tr, fitted(g_sen_lin), g = 10)
+hl_lin <- hoslem.test(y_tr, fitted.values(g_sen_lin), g = 10)
 data.frame(Version = c("Seniority lineal", "log(1 + Seniority) (final)"),
-           AIC = round(c(AIC(g_sen_lin), AIC(g_fin)), 1), BIC = round(c(BIC(g_sen_lin), BIC(g_fin)), 1),
-           p_Hosmer_Lemeshow = round(c(hl_lin$p.value, hoslem.test(y_tr, fitted(g_fin), g = 10)$p.value), 3)) |> knitr::kable()
+           AIC = round(c(aic(g_sen_lin), aic(g_fin)), 1), BIC = round(c(bic(g_sen_lin), bic(g_fin)), 1),
+           p_Hosmer_Lemeshow = round(c(hl_lin$p.value, hoslem.test(y_tr, fitted.values(g_fin), g = 10)$p.value), 3)) |> knitr::kable()
 ```
 
 ## Modelo final: odds ratios
@@ -885,7 +929,7 @@ La numérica que más pesa es `r sub("^z_", "", names(orden_z)[1])` (OR `r round
 ## Bondad de ajuste
 
 ```{r}
-hl <- hoslem.test(y_tr, fitted(g_fin), g = 10)
+hl <- hoslem.test(y_tr, fitted.values(g_fin), g = 10)
 hl
 ```
 
@@ -901,27 +945,24 @@ A partir de acá usamos `test`, **una sola vez**, con el modelo y el punto de co
 #| fig-height: 4.5
 p_test <- predict(g_fin, newdata = test, type = "response")
 roc_test <- roc(test$Status, p_test, levels = c("bueno", "malo"), direction = "<", quiet = TRUE)
-roc_train <- roc(train$Status, fitted(g_fin), levels = c("bueno", "malo"), direction = "<", quiet = TRUE)
-ggroc(list(Prueba = roc_test, Entrenamiento = roc_train), linewidth = 1) +
-  geom_abline(slope = 1, intercept = 1, linetype = "dashed", color = "grey50") +
-  scale_color_manual(values = c("tomato", "steelblue"), name = NULL) +
-  labs(title = "Curva ROC del modelo logístico", x = "Especificidad", y = "Sensibilidad")
-auc_te <- as.numeric(auc(roc_test)); auc_tr <- as.numeric(auc(roc_train)); ic_auc <- ci.auc(roc_test)
+roc_train <- roc(train$Status, fitted.values(g_fin), levels = c("bueno", "malo"), direction = "<", quiet = TRUE)
+plot(roc_test, print.auc = TRUE, main = "Curva ROC del modelo logístico (conjunto de prueba)")
+auc_te <- as.numeric(roc_test$auc); auc_tr <- as.numeric(roc_train$auc)
 ```
 
-El **AUC en prueba es `r round(auc_te, 3)`** (IC 95 %: `r round(ic_auc[1], 3)` a `r round(ic_auc[3], 3)`): si se toma al azar un mal pagador y un buen pagador, el modelo asigna mayor riesgo al mal pagador en ~`r round(100 * auc_te)` % de los casos (discriminación buena). En entrenamiento es `r round(auc_tr, 3)`: la diferencia es chica, **no hay sobreajuste importante**.
+El **AUC en prueba es `r round(auc_te, 3)`**: si se toma al azar un mal pagador y un buen pagador, el modelo asigna mayor riesgo al mal pagador en ~`r round(100 * auc_te)` % de los casos (discriminación buena). En entrenamiento es `r round(auc_tr, 3)`: la diferencia es chica, **no hay sobreajuste importante**.
 
 ### Elección del punto de corte
 
-El corte "por defecto" de 0,5 funciona mal cuando hay pocos eventos (`r round(100 * mean(train$Status == "malo"))` % de malos): muy pocos solicitantes lo superan y el modelo clasifica como "bueno" a muchos malos pagadores. Además, **otorgar un crédito que no se paga cuesta más que rechazar a un buen pagador**. Elegimos el corte con el **índice de Youden** (el punto de la curva ROC que maximiza sensibilidad + especificidad − 1), calculado **solo con `train`**:
+El corte "por defecto" de 0,5 funciona mal cuando hay pocos eventos (`r round(100 * mean(train$Status == "malo"))` % de malos): muy pocos solicitantes lo superan y el modelo clasifica como "bueno" a muchos malos pagadores. Además, **otorgar un crédito que no se paga cuesta más que rechazar a un buen pagador**. Por eso elegimos el corte con `coords(roc, "best", ret = "threshold")` (Unidad 5): **el corte que maximiza a la vez la sensibilidad y la especificidad**. Ese criterio se conoce como **índice de Youden** (sensibilidad + especificidad − 1). Lo calculamos **solo con `train`**:
 
 ```{r}
 #| fig-height: 4
-corte <- coords(roc_train, "best", best.method = "youden", ret = "threshold")$threshold[1]
+corte <- coords(roc_train, "best", ret = "threshold")[1, 1]
 cortes <- seq(0.05, 0.9, by = 0.01)
 curva <- data.frame(corte = cortes,
-  Sensibilidad = sapply(cortes, function(k) mean(fitted(g_fin)[train$Status == "malo"] > k)),
-  Especificidad = sapply(cortes, function(k) mean(fitted(g_fin)[train$Status == "bueno"] <= k)))
+  Sensibilidad = sapply(cortes, function(k) mean(fitted.values(g_fin)[train$Status == "malo"] > k)),
+  Especificidad = sapply(cortes, function(k) mean(fitted.values(g_fin)[train$Status == "bueno"] <= k)))
 curva |> tidyr::pivot_longer(-corte, names_to = "Medida", values_to = "valor") |>
   ggplot(aes(corte, valor, color = Medida)) + geom_line(linewidth = 1) + geom_vline(xintercept = corte, linetype = "dashed") +
   annotate("text", x = corte + 0.02, y = 0.08, label = paste("Corte elegido:", round(corte, 2)), hjust = 0) +
@@ -982,8 +1023,8 @@ Los puntos siguen de cerca la diagonal. La mayor diferencia (`r round(100 * max(
 La validación cruzada (10 pliegues, solo con `train`) da un AUC de **`r f3(tab_mod$AUC_CV_train[3])`** para el modelo final, en línea con el de la prueba (`r f3(auc_te)`): el resultado es estable. Como control, comparamos el modelo final con el mismo modelo **sin `Ingreso_faltante`** (la decisión de incluirla ya estaba tomada con `train`; acá solo se informa su efecto):
 
 ```{r}
-auc_test <- function(m) as.numeric(auc(roc(test$Status, predict(m, test, type = "response"),
-                                          levels = c("bueno", "malo"), direction = "<", quiet = TRUE)))
+auc_test <- function(m) as.numeric(roc(test$Status, predict(m, test, type = "response"),
+                                       levels = c("bueno", "malo"), direction = "<", quiet = TRUE)$auc)
 comp_ing <- data.frame(Modelo = c("Con Ingreso_faltante (final)", "Sin Ingreso_faltante"),
                        AUC_validacion_cruzada = round(c(tab_mod$AUC_CV_train[3], tab_mod$AUC_CV_train[4]), 3),
                        AUC_prueba = round(c(auc_test(g_bic), auc_test(g_bic0)), 3))

@@ -23,20 +23,20 @@
   - **MCAR** (*completely at random*): falta por puro azar, sin relación con nada. Ej.: una falla informática borra ingresos al azar. Borrar esos casos no sesga (solo pierde precisión).
   - **MAR** (*at random*): la probabilidad de faltar depende de **otras variables que sí observamos**. Ej.: el ingreso falta más en quienes tienen un empleo que no es fijo. Borrar los casos **sí sesga**; se corrige imputando con las variables observadas.
   - **MNAR** (*not at random*): depende **del propio valor que falta**. Ej.: quienes ganan muy poco no lo informan. **No se puede verificar ni corregir solo con los datos.**
-- **Cómo lo comprobamos:** comparamos a quienes tienen el ingreso faltante con quienes lo informaron en todas las demás variables (chi-cuadrado para categóricas, Wilcoxon para numéricas). Si fuera MCAR, no habría diferencias.
-- **En nuestro trabajo:** `Income` falta en 381 casos (8,6 %). Difieren en **11 de 13** variables (8 con corrección de Bonferroni). Ej.: el 57 % de los que no informan ingreso es mal pagador (vs. 25 %), y solo el 9 % tiene empleo fijo (vs. 68 %). **Conclusión: no es MCAR; es plausible MAR; MNAR no se puede descartar** (limitación).
+- **Cómo lo comprobamos (regresión logística + `lrtest`, Unidad 5):** definimos `Ingreso_faltante` (1 = el ingreso falta, 0 = observado) y, **para cada una de las 13 variables**, ajustamos una **regresión logística simple** con `Ingreso_faltante` como respuesta y esa variable como única predictora. La comparamos con el **modelo nulo** (solo el intercepto) usando el **test de razón de verosimilitud** (`lmtest::lrtest`). Si fuera MCAR, ninguna variable ayudaría a predecir si el ingreso falta, y el modelo con la variable no sería mejor que el nulo. **p chico = la variable sí ayuda a explicar la ausencia = no es MCAR.** Es la misma lógica de la pregunta "¿mejora el ajuste agregar esta variable?" que usamos para comparar modelos anidados.
+- **En nuestro trabajo:** `Income` falta en 381 casos (8,6 %). Ayudan a explicar la ausencia **10 de 13** variables (9 con corrección de Bonferroni). Ej.: el 57 % de los que no informan ingreso es mal pagador (vs. 25 %), y solo el 9 % tiene empleo fijo (vs. 68 %). **Conclusión: no es MCAR; es plausible MAR; MNAR no se puede descartar** (limitación).
 - **Análisis de casos completos (CCA):** usar solo filas sin NA. Bajo MAR sesga (en la Unidad 6 se vio con datos simulados) y acá perdería el 9,3 % de las filas, justo de mayor riesgo.
 
 ### 1.2b Comparaciones múltiples y corrección de Bonferroni
 - **Problema:** si hacés muchos tests, aumenta la chance de que alguno dé "significativo" solo por azar. Con α = 0,05 y 13 tests independientes, esperaríamos ~0,65 falsos positivos aunque no hubiera ninguna diferencia real.
 - **Bonferroni:** divide el nivel de significación por la cantidad de tests (α/m) para **controlar la tasa de error global**. Es la misma idea de "cuidar la tasa de error global" de las comparaciones múltiples de la Unidad 2 (test de Tukey entre grupos de pingüinos), aplicada a muchos tests en lugar de a pares de grupos. Es conservadora (más difícil rechazar).
-- **En nuestro trabajo:** la tabla de faltantes tiene **13 tests** (5 chi-cuadrado y 8 Wilcoxon). Con Bonferroni el umbral pasa de 0,05 a 0,05/13 ≈ 0,0038. Sin corrección difieren 11 de 13; **con corrección siguen difiriendo 8**. Es decir, la conclusión "no es MCAR" no depende de haber hecho muchas pruebas.
+- **En nuestro trabajo:** la tabla de faltantes tiene **13 tests** (un `lrtest` por variable). Con Bonferroni el umbral pasa de 0,05 a 0,05/13 ≈ 0,0038. Sin corrección ayudan a explicar la ausencia 10 de 13; **con corrección siguen siendo 9**. Es decir, la conclusión "no es MCAR" no depende de haber hecho muchas pruebas.
 
-### 1.2c Test de Wilcoxon (suma de rangos, Mann-Whitney)
-- **Qué compara:** si los valores de una variable numérica tienden a ser **mayores en un grupo que en otro**. Ordena todos los datos de menor a mayor (rangos) y mira si los rangos de un grupo se concentran más arriba. H0: las dos distribuciones son iguales; p chico = difieren.
-- **Por qué en vez de la prueba t:** la prueba t compara **medias** y supone datos aproximadamente normales; nuestras variables son **asimétricas y con atípicos** (ingreso, precio, antigüedad), donde la media se distorsiona. Wilcoxon **no supone normalidad** y es poco sensible a los extremos.
-- **Cómo se lee:** compara la distribución completa, no solo la mediana; por eso puede dar significativo aunque las medianas coincidan (como `Time`: mediana 48 en ambos grupos pero p < 0,001).
-- **En nuestro trabajo:** lo usamos para comparar las 8 variables numéricas entre quienes tienen el ingreso faltante y quienes lo informaron (para las 5 categóricas, chi-cuadrado).
+### 1.2c Estudiar el mecanismo de los faltantes con regresión logística y `lrtest`
+- **Idea:** "¿qué variables predicen que falte el ingreso?" es una pregunta de regresión logística. La respuesta es 0/1 (`Ingreso_faltante`); si alguna variable la predice, la ausencia depende de lo observado (MAR) y no es MCAR.
+- **Cómo se hace:** por cada variable `x`: modelo `glm(Ingreso_faltante ~ x, family = binomial)` contra el modelo nulo `glm(Ingreso_faltante ~ 1, family = binomial)`, y `lrtest(nulo, modelo)` (se usan solo las filas donde `x` no es NA). El p del `lrtest` dice si `x` mejora el ajuste más de lo esperable por azar.
+- **Qué muestra la tabla:** las columnas descriptivas (% o mediana en cada grupo) muestran *cómo* difieren; el p del `lrtest` dice *si* esa diferencia ayuda a explicar la ausencia. Ej.: `Job`: 9 % de empleo fijo entre quienes no informan vs. 68 % entre quienes sí. `Time` tiene la misma mediana en los dos grupos (48) pero el `lrtest` es significativo: la ausencia se relaciona con la distribución completa del plazo, no solo con su mediana.
+- **Ventaja:** usamos la misma herramienta que en la logística (Unidad 5), con lo que no hace falta ningún test adicional.
 
 ### 1.3 Imputación: media/mediana, kNN, mice
 - **Media/mediana:** reemplaza todos los NA por el mismo número. Rápido pero **subestima la variabilidad** y supone MCAR. En nuestro dato: los 381 ingresos imputados tendrían desvío 0.
@@ -73,7 +73,7 @@
 ### 1.8 Supuestos de la regresión lineal y sus tests
 | Supuesto | Qué significa | Cómo se mira | Resultado nuestro |
 |---|---|---|---|
-| **Linealidad** | La relación es una recta | Gráficos de residuos parciales (`crPlots`) | `Time` curvo → agregamos `Time²` |
+| **Linealidad** | La relación es una recta | Residuos vs. cada predictora con curva suavizada (`geom_smooth`) | `Time` curvo (U invertida) → agregamos `Time²` |
 | **Homocedasticidad** | Los residuos tienen la misma dispersión | Residuos vs. ajustados; test de **Breusch-Pagan** | No se cumple (p < 0,001) |
 | **Normalidad** | Los residuos son aprox. normales | **QQ-plot**; test de **Anderson-Darling** (o Shapiro) | No se cumple; cola izquierda |
 | **Independencia** | Una fila no influye en otra | **Durbin-Watson** (solo si hay orden temporal) | No aplica: sin orden temporal |
@@ -131,10 +131,10 @@ Se fija un **punto de corte**: si P(malo) > corte, el modelo dice "malo". Se cru
 - **F1** = promedio armónico de sensibilidad y VPP (0,63).
 
 ### 1.18 ROC y AUC
-- **Curva ROC:** muestra sensibilidad vs. (1 − especificidad) para **todos** los puntos de corte posibles. **AUC** = área bajo la curva: probabilidad de que el modelo asigne mayor riesgo a un mal pagador que a un buen pagador elegidos al azar. 0,5 = azar; 1 = perfecto. **Nuestro AUC en prueba: 0,83** (IC 0,80–0,85).
+- **Curva ROC:** muestra sensibilidad vs. (1 − especificidad) para **todos** los puntos de corte posibles. **AUC** = área bajo la curva: probabilidad de que el modelo asigne mayor riesgo a un mal pagador que a un buen pagador elegidos al azar. 0,5 = azar; 1 = perfecto. **Nuestro AUC en prueba: 0,83.**
 
 ### 1.19 Punto de corte y criterio de Youden
-- El corte por defecto (0,5) funciona mal con pocos eventos (28 % de malos): detecta solo el 50 % de los malos. **Youden** elige el corte que maximiza **sensibilidad + especificidad − 1** (el punto de la ROC más alejado de la diagonal). Lo calculamos **solo con *train***. Resultado: **0,27**. Justificación de negocio: otorgar un crédito que no se paga cuesta más que rechazar a un buen cliente.
+- El corte por defecto (0,5) funciona mal con pocos eventos (28 % de malos): detecta solo el 50 % de los malos. Usamos `coords(roc, "best", ret = "threshold")` (Unidad 5), que elige **el corte que maximiza a la vez la sensibilidad y la especificidad**; ese criterio se conoce como **índice de Youden** (sensibilidad + especificidad − 1: el punto de la ROC más alejado de la diagonal). Lo calculamos **solo con *train***. Resultado: **0,27**. Justificación de negocio: otorgar un crédito que no se paga cuesta más que rechazar a un buen cliente.
 
 ---
 
@@ -156,7 +156,7 @@ Se fija un **punto de corte**: si P(malo) > corte, el modelo dice "malo". Se cru
 ## 3. Preguntas difíciles y respuestas
 
 **1. ¿Qué tipo de faltante es el de `Income`? ¿Cómo lo saben?**
-No es MCAR: quienes no informaron ingreso difieren de los demás en 11 de 13 variables (chi² y Wilcoxon; 8 con Bonferroni). Ej.: 57 % mal pagadores vs. 25 %; solo 9 % con empleo fijo vs. 68 %. Es **plausible MAR** (la ausencia se asocia con variables observadas). **MNAR no se puede verificar** con los datos (si los ingresos muy bajos se ocultan, no lo veríamos). Lo declaramos como limitación.
+No es MCAR: para cada una de 13 variables ajustamos una regresión logística simple con `Ingreso_faltante` como respuesta y la comparamos con el modelo nulo mediante `lrtest`; 10 de 13 ayudan a explicar la ausencia (9 con Bonferroni). Ej.: 57 % mal pagadores vs. 25 %; solo 9 % con empleo fijo vs. 68 %. Es **plausible MAR** (la ausencia se asocia con variables observadas). **MNAR no se puede verificar** con los datos (si los ingresos muy bajos se ocultan, no lo veríamos). Lo declaramos como limitación.
 
 **2. ¿Por qué no eliminaron los casos incompletos?**
 Bajo MAR, usar solo casos completos **sesga** las estimaciones (Unidad 6) y perdíamos el 9,3 % de las filas, justo las de mayor riesgo.
@@ -192,7 +192,7 @@ Compara malos esperados vs. observados en 10 grupos de riesgo (H0: buen ajuste).
 Porque corregir el modelo mirando el *test* implicaría usar el *test* para ajustar el modelo, que es justamente la **fuga de información** que evitamos: el *test* se usa una sola vez, al final, y no se retoca nada después de verlo. Además, el modelo **ordena bien a los clientes** (AUC 0,83 en *test*, 0,85 en validación cruzada) y la sobreestimación se concentra en el grupo de mayor riesgo (predice 87 %, observa 76 %, con ~111 personas por grupo y mucho ruido muestral). Está **declarada como limitación**. (En *train*, donde sí se puede diagnosticar, Hosmer-Lemeshow dio p = 0,55 tras transformar `Seniority`.)
 
 **12. ¿Por qué el corte 0,27 y no 0,5?**
-Con solo 28 % de malos, 0,5 detecta apenas el 50 % de los malos. Para el banco otorgar un crédito que no se paga cuesta más que rechazar a un buen cliente. Usamos **Youden** (maximiza sensibilidad + especificidad − 1) calculado **solo con *train***. En *test*: sensibilidad 75 %, especificidad 76 %, VPP 55 %, VPN 88 %. Si el banco tuviera costos reales, el corte se ajustaría a ellos.
+Con solo 28 % de malos, 0,5 detecta apenas el 50 % de los malos. Para el banco otorgar un crédito que no se paga cuesta más que rechazar a un buen cliente. Usamos `coords(roc, "best", ret = "threshold")` (Unidad 5): el corte que maximiza a la vez sensibilidad y especificidad (índice de Youden), calculado **solo con *train***. En *test*: sensibilidad 75 %, especificidad 76 %, VPP 55 %, VPN 88 %. Si el banco tuviera costos reales, el corte se ajustaría a ellos.
 
 **13. ¿Qué significa AUC 0,83? ¿Hay sobreajuste?**
 Si tomo un mal pagador y un buen pagador al azar, el modelo asigna más riesgo al malo ~83 % de las veces. *Train* 0,854, *test* 0,828, validación cruzada 0,850: diferencia chica, **no hay sobreajuste importante**.
@@ -218,8 +218,8 @@ Detecta multicolinealidad. Los GVIF ajustados son todos < 1,8: no hay problema. 
 **20. Interpreten el coeficiente de `log_Price` y los de `Time`.**
 `log_Price` = 0,74: un bien 10 % más caro → monto ≈ +7,3 % (menos que proporcional: se financia proporcionalmente menos). Plazo: con `Time²` el efecto se desacelera; vs. 12 meses, a 24 meses se pide ~32 % más y a 60 meses ~113 % más.
 
-**21. ¿Por qué usaron Wilcoxon y no t para comparar numéricas?**
-Las variables son asimétricas y con atípicos; Wilcoxon no supone normalidad y compara toda la distribución (por eso puede dar significativo aunque las medianas coincidan, como en `Time`).
+**21. ¿Cómo usaron la regresión logística para estudiar el mecanismo de los faltantes?**
+Creamos `Ingreso_faltante` (1/0) y, por cada variable, comparamos una regresión logística simple (`Ingreso_faltante ~ variable`) con el modelo nulo mediante `lrtest` (Unidad 5). Si la variable mejora el ajuste (p chico), ayuda a explicar la ausencia, o sea que no es MCAR. Dio significativo en 10 de 13 variables (9 con Bonferroni). Las columnas descriptivas muestran en qué sentido difieren (ej.: solo 9 % con empleo fijo entre quienes no informan ingreso vs. 68 %).
 
 **22. ¿Por qué imputaron el lineal con todos los datos y la logística separada?**
 El lineal no tiene partición ni evaluación en un conjunto de prueba, así que imputar con todas las filas no genera fuga. En la logística sí hay *test*, y ahí hay que imputarlo sin usar información de *test* en el proceso.
@@ -235,7 +235,7 @@ El lineal no tiene partición ni evaluación en un conjunto de prueba, así que 
 |---|---|
 | Recodificar primero | La imputación funciona mejor con categorías ya agrupadas |
 | Agrupar `ignore`/`other` y `divorced`/`separated`/`widow` | 20–130 casos darían coeficientes inestables |
-| Demostrar que Income no es MCAR (chi², Wilcoxon) | Justifica no borrar casos e imputar |
+| Demostrar que Income no es MCAR (logística simple + `lrtest` por variable, Bonferroni) | Justifica no borrar casos e imputar |
 | kNN (k = 5) sin `Status` ni `Amount` | Encaja con MAR; no se mete la respuesta en las predictoras |
 | `Ingreso_faltante` creada antes de imputar | Conserva la señal de que el ingreso faltaba |
 | Partición **antes** de imputar; *test* con donantes de *train* | Evitar fuga de información |
@@ -244,7 +244,7 @@ El lineal no tiene partición ni evaluación en un conjunto de prueba, así que 
 | `Pct_fin` solo en la logística | Contiene a la respuesta lineal |
 | Mantener log pese a λ = 0,34 | Misma conclusión con raíz/Box-Cox; interpretación en %; n grande; bootstrap y robusta |
 | Modelo BIC (no AIC) | Parsimonia; coincide con `regsubsets` |
-| `Time²` en el lineal | Curvatura en residuos parciales; mejora BIC |
+| `Time²` en el lineal | Curvatura en residuos vs. `Time`; mejora BIC |
 | Bootstrap + regresión robusta | Heterocedasticidad y no normalidad |
 | No eliminar atípicos | Son reales; Cook máx. 0,019 |
 | Corte 0,27 (Youden en *train*) | Clases desbalanceadas; costos asimétricos |
@@ -253,8 +253,8 @@ El lineal no tiene partición ni evaluación en un conjunto de prueba, así que 
 ## 5. Números clave
 
 - **Datos:** 4454 solicitantes · 415 filas con NA (9,3 %) · `Income` faltante 381 (8,6 %) · 28,2 % mal pagadores.
-- **Faltantes:** difiere en 11/13 variables (8 con Bonferroni) · mal pagadores 57 % vs. 25 % · empleo fijo 9 % vs. 68 % · kNN imputado: media 127, desvío 38 (observados: 142, 81).
+- **Faltantes:** `lrtest` significativo en 10/13 variables (9 con Bonferroni) · mal pagadores 57 % vs. 25 % · empleo fijo 9 % vs. 68 % · kNN imputado: media 127, desvío 38 (observados: 142, 81).
 - **Lineal:** R² aj. 0,661 · elasticidad precio 0,74 · λ Box-Cox 0,34 [0,31; 0,38] · R² aj. log/raíz/BC: 0,661/0,649/0,657 · asimetría residuos −1,45/−0,67/−0,96 · Cook máx. 0,019 · 81 con |rstudent| > 3.
-- **Logística:** *train* 3341 / *test* 1113 · 12 variables, 18 coeficientes · AUC *test* 0,828 [0,802; 0,854], *train* 0,854, validación cruzada 0,850 · Hosmer-Lemeshow *train* p = 0,55, *test* p = 0,03 · corte 0,27 · sens. 75 %, esp. 76 %, VPP 55 %, VPN 88 %, F1 0,63 (corte 0,5: sens. 50 %, exactitud 79 %).
+- **Logística:** *train* 3341 / *test* 1113 · 12 variables, 18 coeficientes · AUC *test* 0,828, *train* 0,854, validación cruzada 0,850 · Hosmer-Lemeshow *train* p = 0,55, *test* p = 0,03 · corte 0,27 · sens. 75 %, esp. 76 %, VPP 55 %, VPN 88 %, F1 0,63 (corte 0,5: sens. 50 %, exactitud 79 %).
 - **OR:** antecedentes 6,29 · ingreso no informado 4,01 · medio tiempo 3,72 · soltero 1,34 / otro estado civil 2,67 · independiente 1,40 · deuda 1,86 · duplicar ingreso 0,44 · duplicar (1+antigüedad) 0,68 · +10 puntos de % financiado 1,42.
 - **Con/sin `Ingreso_faltante`:** AUC *test* 0,828 vs. 0,822; AUC validación cruzada 0,850 vs. 0,842.
