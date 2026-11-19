@@ -224,6 +224,9 @@ Creamos `Ingreso_faltante` (1/0) y, por cada variable, comparamos una regresión
 **22. ¿Por qué imputaron el lineal con todos los datos y la logística separada?**
 El lineal no tiene partición ni evaluación en un conjunto de prueba, así que imputar con todas las filas no genera fuga. En la logística sí hay *test*, y ahí hay que imputarlo sin usar información de *test* en el proceso.
 
+**22b. ¿Por qué los AIC y BIC del modelo lineal son negativos?**
+Porque se calcularon como los muestra `stepAIC`, que omite una constante; por eso pueden dar negativos. No es un error: solo importan las **diferencias entre modelos** (menor = mejor), y esas no cambian (por ejemplo, `Time²` mejora el BIC en 87 puntos). En la logística los valores son los habituales (positivos).
+
 **23. ¿Qué limitaciones tiene el trabajo?**
 (1) MNAR no verificable y kNN reduce variabilidad; (2) la fuente no informa moneda, año ni definiciones; (3) asociaciones, no causalidad; (4) residuos asimétricos y monto acotado por el precio (quizá convendría modelar la proporción financiada); (5) una sola partición (reforzada con validación cruzada) y sin interacciones; (6) corte basado en un supuesto de costos; (7) calibración en *test* buena pero no perfecta.
 
