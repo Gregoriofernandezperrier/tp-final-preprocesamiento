@@ -1,6 +1,6 @@
 # Guía de defensa y estudio — Trabajo Final (Solicitudes de crédito)
 
-> **Solo para nosotros, no se entrega.** El documento para exponer es `TP_Final.html` (índice a la izquierda, código plegado con "Ver código").
+> **Solo para nosotros, no se entrega.** Se expone con `presentacion.html`; el documento del trabajo es `TP_Final.html` (índice a la izquierda, código plegado con "Ver código").
 > Los números de esta guía salen del documento renderizado con `set.seed(2024)`. Si se cambia algo, vuelvan a chequearlos contra el HTML.
 > Cada uno defiende **todo** el trabajo, no solo "su parte".
 
@@ -119,16 +119,27 @@ Se fija un **punto de corte**: si P(malo) > corte, el modelo dice "malo". Se cru
 
 ## 2. Guion de la exposición (15 minutos)
 
-| Min | Sección del HTML | Qué decir | Qué mostrar |
-|---|---|---|---|
-| 0:00–1:30 | **1. Introducción** | Dataset (4454 solicitantes, 14 variables, fuente `modeldata`). Los dos objetivos en lenguaje simple. Esquema de datos: `base`, `cred`, `train/test`. | Tabla de variables |
-| 1:30–5:00 | **2. Pre-procesamiento** | Las 6 técnicas, **una frase de por qué cada una**. Detenerse en **faltantes**: MCAR/MAR/MNAR, tabla descriptiva + `lrtest` (no es MCAR), kNN, por qué no se borran casos, `Ingreso_faltante`. | Tabla de mecanismos; tabla "ingreso faltante vs. observado"; histogramas antes/después del log |
-| 5:00–6:00 | **3. Exploratorio** | 3 hallazgos: monto depende de precio y plazo; 28 % malos; antecedentes, empleo, ingreso y % financiado se asocian al riesgo. | Monto vs. precio; barras de % malos |
-| 6:00–10:00 | **4–5. Lineal** | Modelo completo (R² aj. 0,66; sin multicolinealidad) → `stepAIC`: BIC deja 7 variables → supuestos: fallan homocedasticidad y normalidad; `Time` curvo → `Time²` → influyentes (Cook máx. 0,019) → bootstrap da lo mismo que el IC clásico → modelo final y 3–4 coeficientes. | Residuos y QQ; residuos vs. predictoras; tabla de coeficientes |
-| 10:00–14:00 | **6. Logística** | Partición **antes** de imputar (fuga de información) → selección con *train* (BIC y `lrtest`) → `log(1+Seniority)` por Hosmer-Lemeshow → OR principales (antecedentes, ingreso no informado, medio tiempo) → AUC 0,83 → corte 0,27 (`coords`, Youden) → matriz y métricas con 0,5 vs. 0,27. | Gráfico de OR; ROC; tabla de métricas |
-| 14:00–15:00 | **7. Síntesis** | 3 resultados + limitaciones (MNAR, no causalidad, residuos asimétricos). | Viñetas finales |
+Se expone con `presentacion.html` (15 diapositivas). Cada una tiene **notas del orador** para practicar (tecla `S`). `TP_Final.html` queda abierto en otra pestaña por si preguntan por un detalle.
 
-**Consejos:** no lean código; hablen del *por qué*. Si se atrasan, resuman el exploratorio, no los supuestos ni la fuga de información (es lo que más se pregunta).
+| Min | Diapositiva | Qué decir | Si preguntan (sección del HTML) |
+|---|---|---|---|
+| 0:00–0:30 | **1. Portada** | Presentarse y plantear las dos preguntas. | — |
+| 0:30–1:15 | **2. Datos y objetivos** | `credit_data` (`modeldata`): 4454 solicitudes, 14 variables. Lineal: de qué depende el monto. Logística: quién es mal pagador (28 %). | 1. Introducción |
+| 1:15–2:15 | **3. Las 6 técnicas** | Recorrer la tabla: **qué hicimos y por qué**, una frase por fila. No profundizar en faltantes (vienen enseguida). | 2. Pre-procesamiento |
+| 2:15–3:30 | **4. Faltantes (1): por qué** | `Income` falta en 8,6 %. Quienes no lo informan: 57 % malos vs. 25,5 %, mucho menos empleo fijo. `lrtest` p < 0,001 → **no es MCAR**, plausible MAR, MNAR no verificable. | 2.3 Faltantes |
+| 3:30–4:30 | **5. Faltantes (2): qué hicimos** | Ni borrar casos ni mediana (desvío 0). kNN (k = 5) con variables completas, sin las respuestas. `Ingreso_faltante` antes de imputar. Límite: menos dispersión (38 vs. 81). | 2.3 Decisiones |
+| 4:30–5:30 | **6. Transformaciones y atípicos** | El log simetriza ingreso y monto y permite leer en %. Atípicos: ingreso 232 → 101 con log. **No se elimina ningún caso.** | Transformaciones y atípicos |
+| 5:30–6:15 | **7. Exploratorio lineal** | Monto crece con precio (0,71) y plazo (0,53); nunca supera el precio; el plazo se desacelera. | 3. Exploratorio |
+| 6:15–7:00 | **8. Exploratorio logística** | Antecedentes 55 % vs. 22 %; medio tiempo 60 % vs. fijo 21 %; propietarios 19 %; la deuda sola casi no marca diferencia. | 3. Exploratorio |
+| 7:00–8:00 | **9. Lineal: selección** | *Backward* con `stepAIC`: BIC deja 7 variables; R² aj. 0,6555 → 0,6535; GVIF < 1,8. Elegimos por parsimonia. | 4. Selección de variables |
+| 8:00–9:15 | **10. Lineal: supuestos** | Breusch-Pagan y Anderson-Darling rechazan. `Time` curvo → `Time²` (BIC mejora 87). Lo que persiste viene de los datos → bootstrap. | 4. Evaluación de supuestos |
+| 9:15–10:00 | **11. Influyentes y bootstrap** | Cook máx. 0,019: ningún caso domina, no se eliminan. IC bootstrap del mismo ancho que los clásicos → inferencia confiable. | Influyentes y bootstrap |
+| 10:00–11:15 | **12. Modelo lineal final** | R² aj. 0,661. Precio: +10 % → +7,3 %. Plazo: +32 % a 24 meses, +112,6 % a 60. Perfil: efectos chicos. | 5. Modelo lineal final |
+| 11:15–12:30 | **13. Logística: armado** | Partición 75/25 **antes** de imputar (fuga de información). BIC solo con *train*. `log(1+Seniority)`: Hosmer-Lemeshow 0,024 → 0,55. `Ingreso_faltante` mejora el ajuste. | 6. Partición y selección |
+| 12:30–13:30 | **14. Odds ratios** | Antecedentes 6,29 · ingreso no informado 4,01 · medio tiempo 3,72 · duplicar ingreso 0,44 · duplicar (1 + antigüedad) 0,68. Son **chances**, no probabilidad ni causa. | 6. Odds ratios |
+| 13:30–15:00 | **15. Predicción y cierre** | AUC 0,828 en *test*. Corte 0,27 (Youden, en *train*): sensibilidad 0,505 → 0,748. 3 conclusiones y 3 limitaciones. | 6. Capacidad predictiva y 7. Síntesis |
+
+**Consejos:** no lean las diapositivas; hablen del *por qué*. Control de tiempo: al empezar la 9 deberían ir por el minuto 7, y al empezar la 13, por el 11. Si se atrasan, resuman el exploratorio (7 y 8), no los supuestos ni la fuga de información (es lo que más se pregunta).
 
 ---
 

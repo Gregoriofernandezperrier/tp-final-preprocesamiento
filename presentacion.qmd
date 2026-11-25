@@ -1,0 +1,445 @@
+---
+pagetitle: "Trabajo Final — Solicitudes de crédito"
+lang: es
+format:
+  revealjs:
+    embed-resources: true
+    theme: default
+    width: 1280
+    height: 720
+    margin: 0.04
+    center: false
+    auto-stretch: false
+    slide-number: c/t
+    menu: false
+    html-math-method: plain
+    transition: none
+    fig-dpi: 200
+    include-in-header:
+      text: |
+        <style>
+          .reveal { font-size: 30px; color: #1f2933; }
+          .reveal .slides section { text-align: left; }
+          .reveal h2 { font-size: 1.4em; color: #1f3a5f; border-bottom: 3px solid #4682b4;
+                       padding-bottom: .15em; margin-bottom: .5em; }
+          .reveal ul { margin-left: 1em; }
+          .reveal li { margin-bottom: .35em; line-height: 1.25; }
+          .reveal p { margin: .3em 0; }
+          .reveal .cell { margin: 0; }
+          .reveal .cell-output-display p { margin: 0; }
+          .reveal img { display: block; margin: 0 auto; }
+          .reveal table { width: 100%; margin: .2em 0 .5em 0; font-size: .88em; }
+          .reveal table th, .reveal table td { padding: .22em .55em; }
+          .reveal table th { color: #1f3a5f; border-bottom: 2px solid #1f3a5f; }
+          .reveal .chico { font-size: .8em; }
+          .reveal .tabla-tecnicas table { font-size: .93em; }
+          .reveal .tabla-tecnicas table th, .reveal .tabla-tecnicas table td { padding: .36em .55em; }
+          .reveal .compacta table { font-size: .76em; }
+          .reveal .caja { border-left: 6px solid #4682b4; background: #f3f6f9; padding: .5em .8em; margin: .6em 0; }
+          .reveal .caja.roja { border-left-color: #e4572e; }
+          .reveal .clave { font-size: 1.15em; font-weight: 700; color: #1f3a5f; }
+          .reveal .portada-titulo { font-size: 1.75em; font-weight: 700; color: #1f3a5f; line-height: 1.2;
+                                    border-bottom: 4px solid #4682b4; padding-bottom: .4em; margin: 2.2em 0 .7em 0; }
+          .reveal .final { font-size: .72em; }
+          .reveal .final table { font-size: .98em; margin: 0; }
+          .reveal .final table th, .reveal .final table td { padding: .1em .55em; }
+          .reveal .final .caja { margin: .2em 0 0 0; padding: .35em .7em; }
+          .reveal .final ul { margin: .1em 0 0 1em; }
+          .reveal .final li { margin-bottom: .1em; }
+        </style>
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+#| include: false
+# Todos los números y gráficos salen del código de TP_Final.qmd: se extrae a un script y se ejecuta acá.
+options(knitr.duplicate.label = "allow")
+script <- tempfile(fileext = ".R")
+invisible(knitr::purl("TP_Final.qmd", output = script, quiet = TRUE))
+
+# El código del TP guarda datos/credit_procesado.*: acá se anula para no reescribir archivos del trabajo
+saveRDS <- function(...) invisible(NULL)
+write.csv <- function(...) invisible(NULL)
+
+# Se guardan los gráficos que el TP muestra sin asignarlos a un objeto
+graficos <- list()
+for (expresion in parse(script, encoding = "UTF-8")) {
+  res <- withVisible(eval(expresion, envir = globalenv()))
+  if (res$visible && inherits(res$value, "ggplot"))
+    graficos[[paste(deparse(expresion), collapse = " ")]] <- res$value
+}
+rm(saveRDS, write.csv, expresion, res)
+
+grafico <- function(patron) {
+  i <- grep(patron, names(graficos), fixed = TRUE)
+  stopifnot(length(i) == 1)
+  graficos[[i]]
+}
+letra <- theme(text = element_text(size = 15))   # solo agranda la letra de los gráficos
+dec <- function(x, d) formatC(x, format = "f", digits = d)   # decimales fijos, con coma
+```
+
+## {#portada}
+
+::: {.portada-titulo}
+Solicitudes de crédito: ¿qué determina el monto pedido y quién termina siendo mal pagador?
+:::
+
+**Trabajo Final — Taller de Pre-procesamiento de Datos**
+
+Licenciatura en Ciencia de Datos · Universidad Austral
+
+Integrante 1 · Integrante 2
+
+25 de noviembre de 2026
+
+::: notes
+Buenos días, somos Integrante 1 e Integrante 2. Trabajamos con solicitudes de crédito de consumo y nos hicimos dos preguntas: de qué depende el monto que pide una persona y quién termina siendo mal pagador. Vamos a contar el pre-procesamiento, un exploratorio corto y los dos modelos.
+:::
+
+## Datos y objetivos
+
+- Fuente: base `credit_data` del paquete `modeldata` de R
+- **`r nrow(orig)` solicitudes** de crédito de consumo y **`r ncol(orig)` variables**
+- Perfil del solicitante, condiciones del préstamo y resultado (bueno / malo)
+
+::: {.caja}
+[Objetivo 1 · Regresión lineal]{.clave}
+
+¿De qué depende el **monto pedido** (`Amount`)?
+:::
+
+::: {.caja .roja}
+[Objetivo 2 · Regresión logística]{.clave}
+
+¿Quién termina siendo **mal pagador**? (`r round(100 * mean(cred$Status == "malo"))`&nbsp;% de malos)
+:::
+
+::: notes
+Cada fila es una persona que pidió un préstamo para comprar un bien. Con la regresión lineal buscamos explicar cuánto pide. Con la logística buscamos predecir si va a ser mal pagador, que es lo que pasa en el `r round(100 * mean(cred$Status == "malo"))`&nbsp;% de los casos.
+:::
+
+## Pre-procesamiento: las 6 técnicas
+
+::: {.tabla-tecnicas}
+
+| Técnica | Qué hicimos | Por qué |
+|:--------------|:-----------------------------|:-----------------------------|
+| **Datos faltantes** | Imputación kNN (k = 5) | No son al azar: borrar casos sesga |
+| **Recodificación** | Agrupamos categorías chicas; referencia = la más frecuente | Coeficientes estables e interpretables |
+| **Variables derivadas** | `Ingreso_faltante`, `Pct_fin`, `Tiene_deuda` | Conservar y resumir información útil |
+| **Transformaciones** | log en monto, precio e ingreso; log(1 + x) en activos y antigüedad (esta, en la logística) | Reducir asimetría y efectos no lineales |
+| **Cambio de escala** | No estandarizamos | Interpretar en años, meses y % |
+| **Valores atípicos** | No eliminamos ninguno | Son casos reales; medimos su influencia |
+
+: {tbl-colwidths="[24,41,35]"}
+
+:::
+
+::: notes
+Estas son las seis técnicas de la consigna, con una razón para cada decisión. Recodificamos primero porque la imputación funciona mejor con categorías ya agrupadas. El logaritmo de la antigüedad se usa solo en la logística; en el lineal queda en años.
+:::
+
+## Faltantes (1): ¿por qué falta el ingreso?
+
+`Income` falta en **`r n_inc` casos (`r round(100 * n_inc / nrow(orig), 1)`&nbsp;%)**
+
+```{r}
+knitr::kable(evid[, c("Medida", "Ingreso_observado", "Ingreso_faltante")],
+             col.names = c("Medida", "Ingreso observado", "Ingreso faltante"), align = "lrr")
+```
+
+- Regresión logística de `Ingreso_faltante` sobre `Status` vs. modelo nulo: `lrtest`, **p `r pv(lr_status[2, "Pr(>Chisq)"])`**
+- **No es MCAR:** la ausencia se relaciona con otras variables
+- **Plausible MAR:** se asocia con variables que observamos
+- **MNAR no es verificable** con estos datos
+
+::: notes
+Comparamos a quienes no informaron el ingreso con quienes sí: hay muchos más malos pagadores, mucho menos empleo fijo, más antecedentes y menos antigüedad. El test de razón de verosimilitud confirma que la falta del dato no es al azar. Por eso es plausible que sea MAR, pero que dependa del propio ingreso no lo podemos comprobar.
+:::
+
+## Faltantes (2): qué hicimos
+
+- **No borrar casos** (sesga y pierde `r round(100 * n_na_filas / nrow(orig), 1)`&nbsp;% de las filas) **ni usar la mediana**
+- **kNN (k = 5)** con variables completas: antigüedad, edad, plazo, gastos, precio y antecedentes
+- Sin `Status` ni `Amount`: no metemos las respuestas
+- **`Ingreso_faltante`**: marca creada **antes** de imputar
+
+```{r}
+comp |> group_by(Grupo) |>
+  summarise(n = n(), Media = round(mean(Income), 1), Desvio = round(sd(Income), 1), Mediana = median(Income),
+            Min = min(Income), Max = max(Income)) |>
+  knitr::kable(col.names = c("Ingreso", "n", "Media", "Desvío", "Mediana", "Mín.", "Máx."), align = "lrrrrrr")
+```
+
+::: notes
+Con la mediana, los `r sum(fal)` casos tendrían el mismo valor y desvío cero. kNN completa cada dato con las cinco personas más parecidas, así que respeta mejor el perfil. Su límite es que los valores imputados varían menos que los observados.
+:::
+
+## Transformaciones y valores atípicos
+
+::: {.columns}
+::: {.column width="69%"}
+```{r}
+#| fig-width: 8.4
+#| fig-height: 5.4
+#| out-width: "100%"
+((p1 | p2) / (p3 | p4)) & letra
+```
+:::
+::: {.column width="31%"}
+::: {.chico}
+Atípicos (regla del boxplot)
+
+```{r}
+knitr::kable(atip_cmp, col.names = c("Variable", "Original", "Con log"), align = "lrr")
+```
+
+- El **log** acerca la cola larga al resto
+- En `Price` aparecen precios bajos como atípicos
+- **No eliminamos casos:** son plausibles, no errores
+:::
+:::
+:::
+
+::: notes
+El ingreso y el monto son asimétricos a la derecha, y con logaritmo quedan mucho más simétricos, sobre todo el ingreso. Además los efectos del dinero se pueden leer en porcentajes. Los valores extremos son reales, así que no los borramos y más adelante medimos su influencia.
+:::
+
+## Exploratorio: el monto pedido
+
+```{r}
+#| fig-width: 11
+#| fig-height: 4.5
+#| out-width: "100%"
+(e2 | grafico("factor(Time)")) & letra
+```
+
+- Correlación de log(monto) con log(precio): **`r round(cor(cred$log_Amount, cred$log_Price), 2)`**; ningún monto supera el precio
+- Correlación de log(monto) con el plazo: **`r round(cor(cred$log_Amount, cred$Time), 2)`**; el aumento se desacelera
+
+::: notes
+El monto crece con el precio del bien, y nadie pide más de lo que vale. También crece con el plazo, pero cada vez menos en los plazos largos. Esa curva la retomamos en el modelo.
+:::
+
+## Exploratorio: ¿quién es mal pagador?
+
+::: {.columns}
+::: {.column width="70%"}
+```{r}
+#| fig-width: 8.4
+#| fig-height: 5.3
+#| out-width: "100%"
+grafico('prop_malo("Records"') & letra
+```
+:::
+::: {.column width="30%"}
+::: {.chico}
+- **Antecedentes:** `r pmalo("Records")["si"]`&nbsp;% vs. `r pmalo("Records")["no"]`&nbsp;% sin ellos
+- **Medio tiempo** `r pmalo("Job")["medio_tiempo"]`&nbsp;% e **independientes** `r pmalo("Job")["independiente"]`&nbsp;% vs. fijo `r pmalo("Job")["fijo"]`&nbsp;%
+- **Propietarios** `r pmalo("Home")["propia"]`&nbsp;% vs. alquiler `r pmalo("Home")["alquila"]`&nbsp;%
+- **Deuda previa:** casi no cambia (`r pmalo("Tiene_deuda")["si"]`&nbsp;% con deuda vs. `r pmalo("Tiene_deuda")["no"]`&nbsp;% sin)
+:::
+:::
+:::
+
+::: notes
+Los antecedentes son la diferencia más grande. También hay más riesgo con empleo de medio tiempo o independiente, y menos entre los propietarios. La deuda sola casi no marca diferencia, pero en el modelo vamos a ver que cambia al controlar por las demás variables.
+:::
+
+## Modelo lineal: selección de variables
+
+Respuesta: log(monto) · Selección hacia atrás (*backward*) con `stepAIC`
+
+```{r}
+knitr::kable(rbind(resumen(m_full, "Completo"), resumen(bwd_aic, "Backward (AIC)"), resumen(bwd_bic, "Backward (BIC)")),
+             col.names = c("Modelo", "Coeficientes", "AIC", "BIC", "R² ajustado"), align = "lrrrr")
+```
+
+- **AIC** solo descarta `Ingreso_faltante`
+- **BIC deja `r n_var(f_bic)` variables:** precio, plazo, antigüedad, antecedentes, empleo, ingreso y deuda
+- R² ajustado: **`r round(summary(m_full)$adj.r.squared, 4)` → `r round(summary(m_bic)$adj.r.squared, 4)`** (elegimos BIC por parsimonia)
+- **Sin multicolinealidad:** GVIF ajustado < `r ceiling(10 * max(vif_full[, 3])) / 10`
+
+::: notes
+Partimos del modelo con todas las predictoras y sacamos variables de a una. BIC penaliza más la complejidad y nos deja un modelo mucho más simple que explica casi lo mismo. Los AIC y BIC dan negativos porque stepAIC omite una constante: solo importan las diferencias.
+:::
+
+## Modelo lineal: supuestos
+
+```{r}
+#| fig-width: 12
+#| fig-height: 4.65
+#| out-width: "100%"
+((g1 / g2) | grafico("Residuos vs. cada predictora")) + plot_layout(widths = c(1, 1.5)) & letra &
+  theme(plot.title = element_text(size = 14))
+```
+
+::: {.chico}
+- **Breusch-Pagan** (p `r pv(bp1$p.value)`) y **Anderson-Darling** (p `r pv(ad1$p.value)`) rechazan
+- **`Time` tiene curvatura** → agregamos **Time²** (el BIC mejora `r dec(bic(m_bic) - bic(m_pol), 0)` puntos)
+- Con Time² **persisten** heterocedasticidad y no normalidad → bootstrap
+:::
+
+::: notes
+La dispersión de los residuos no es constante y la cola izquierda se aleja de la normal. El plazo muestra una U invertida, así que sumamos el término cuadrático. Lo que queda se debe a personas que piden muy poco respecto del precio, no a la forma del modelo.
+:::
+
+## Modelo lineal: influyentes y bootstrap
+
+::: {.columns}
+::: {.column width="66%"}
+```{r}
+#| fig-width: 7.8
+#| fig-height: 5
+#| out-width: "100%"
+grafico("aes(id, cook)") + letra
+```
+:::
+::: {.column width="34%"}
+::: {.chico}
+- **Cook máximo `r signif(max(infl$cook), 2)`** (lejos de 1): ningún caso domina
+- Son casos reales: **no se eliminan**
+- **Bootstrap:** 1000 remuestras de filas
+- Ancho de los IC: **`r dec(ancho_rel, 2)` veces** el clásico (mediana) → **inferencia confiable**
+:::
+:::
+:::
+
+::: notes
+La línea roja marca 4/n y sirve para mirar casos, pero ninguno se acerca a 1. Si sacamos los influyentes los signos se mantienen, así que los dejamos. El bootstrap no necesita normalidad ni varianza constante y da intervalos prácticamente iguales a los clásicos.
+:::
+
+## Modelo lineal final
+
+R² ajustado: [`r round(summary(m_pol)$adj.r.squared, 3)`]{.clave} · Elasticidad del precio: [`r round(cf["log_Price"], 2)`]{.clave}
+(+10&nbsp;% en el precio → **+`r round(100 * (1.1^cf["log_Price"] - 1), 1)`&nbsp;%** de monto)
+
+::: {.columns}
+::: {.column width="40%"}
+**Plazo** (respecto de 12 meses)
+
+```{r}
+plazo <- c(24, 36, 48, 60)
+knitr::kable(data.frame(Plazo = paste(plazo, "meses"),
+  Cambio = paste0("+", pct(cf["Time"] * (plazo - 12) + cf["I(Time^2)"] * (plazo^2 - 144)), " %")),
+  col.names = c("Plazo", "Cambio en el monto"), align = "lr", row.names = FALSE)
+```
+:::
+::: {.column width="4%"}
+:::
+::: {.column width="56%"}
+**Perfil** (a igualdad del resto)
+
+- **Antecedentes:** +`r pct(cf["Recordssi"])`&nbsp;%
+- **Empleo** (vs. fijo): independiente +`r pct(cf["Jobindependiente"])`&nbsp;%, medio tiempo +`r pct(cf["Jobmedio_tiempo"])`&nbsp;%, otro +`r pct(cf["Jobotro"])`&nbsp;%
+- **Ingreso** +10&nbsp;% → monto +`r round(100 * (1.1^cf["log_Income"] - 1), 1)`&nbsp;%
+- **Deuda previa:** −`r abs(pct(cf["Tiene_deudasi"]))`&nbsp;%
+:::
+:::
+
+::: notes
+El precio es lo que más pesa: como la elasticidad es menor que uno, un bien más caro se financia proporcionalmente un poco menos. A más plazo se pide más, con rendimientos decrecientes. El perfil tiene efectos reales pero chicos; además, cada año de antigüedad baja el monto un `r abs(pct(cf["Seniority"]))`&nbsp;%.
+:::
+
+## Logística: cómo se armó el modelo
+
+- **Partición 75/25 antes de imputar:** si no, datos de prueba se filtran al entrenamiento (*fuga de información*) y la evaluación sale optimista
+- **Selección con BIC**, solo con *train*: **`r n_var_log(f_bic_log)` variables**
+- **log(1 + Seniority):** Hosmer-Lemeshow pasa de p `r round(hl_lin$p.value, 3)` a **p `r round(hl$p.value, 2)`**
+- **`Ingreso_faltante` mejora el ajuste:** `lrtest`, p `r pv(lr_ing[2, "Pr(>Chisq)"])`
+
+```{r}
+knitr::kable(data.frame(Version = c("Seniority lineal", "log(1 + Seniority) (final)"),
+  AIC = round(c(aic(g_sen_lin), aic(g_fin)), 1), BIC = round(c(bic(g_sen_lin), bic(g_fin)), 1),
+  p_Hosmer_Lemeshow = round(c(hl_lin$p.value, hl$p.value), 3)),
+  col.names = c("Versión (train)", "AIC", "BIC", "p Hosmer-Lemeshow"), align = "lrrr")
+```
+
+::: notes
+Primero partimos los datos y recién después imputamos: el conjunto de prueba se imputa usando solo filas de entrenamiento como donantes. Con la antigüedad en años, Hosmer-Lemeshow detectaba un desajuste que desaparece con el logaritmo. No haber informado el ingreso aporta información incluso con las demás variables en el modelo.
+:::
+
+## Logística: odds ratios
+
+::: {.columns}
+::: {.column width="68%"}
+```{r}
+#| fig-width: 8.2
+#| fig-height: 5.4
+#| out-width: "100%"
+grafico("or_plot") + labs(caption = "Los OR de variables numéricas son por unidad (por eso quedan cerca de 1)") + letra
+```
+:::
+::: {.column width="32%"}
+::: {.chico}
+- **Antecedentes:** `r OR("Recordssi")`
+- **Ingreso no informado:** `r OR("Ingreso_faltante")`
+- **Medio tiempo** (vs. fijo): `r OR("Jobmedio_tiempo")`
+- **Duplicar el ingreso:** `r round(2^b["log_Income"], 2)`
+- **Duplicar (1 + antigüedad):** `r round(2^b["log_Seniority"], 2)`
+
+OR > 1 sube las chances de ser mal pagador; OR < 1 las baja.
+:::
+:::
+:::
+
+::: notes
+Tener antecedentes multiplica por `r OR("Recordssi")` las chances de ser mal pagador, que no es lo mismo que la probabilidad. No informar el ingreso es una señal fuerte, pero no una causa. En cambio, más ingreso y más antigüedad protegen: duplicarlos reduce las chances.
+:::
+
+## Capacidad predictiva, síntesis y limitaciones
+
+::: {.final}
+
+::: {.columns}
+::: {.column width="38%"}
+```{r}
+#| fig-width: 4.4
+#| fig-height: 4.2
+#| out-width: "82%"
+par(mar = c(4, 4, 2.2, 1))
+plot(roc_test, main = "Curva ROC (conjunto de prueba)", xlab = "Especificidad", ylab = "Sensibilidad")
+text(0.35, 0.25, paste("AUC:", f3(auc_te)), cex = 1.4, font = 2)
+```
+:::
+::: {.column width="62%"}
+**AUC `r f3(auc_te)`** en prueba · Corte **`r round(corte, 2)`** (`coords` "best", Youden, en *train*)
+
+```{r}
+knitr::kable(tab_met, col.names = c("Métrica (prueba)", "Corte 0,5", paste("Corte", dec(corte, 2))), align = "lrr")
+```
+:::
+:::
+
+::: {.columns}
+::: {.column width="49%"}
+::: {.caja}
+**Conclusiones**
+
+- Monto: sobre todo **precio** y **plazo**
+- Más riesgo: **antecedentes**, medio tiempo, ingreso no informado; menos con ingreso y antigüedad
+- Buena discriminación; el corte `r round(corte, 2)` detecta **`r round(100 * mk["Sensibilidad"])`&nbsp;%** de los malos
+:::
+:::
+::: {.column width="2%"}
+:::
+::: {.column width="49%"}
+::: {.caja .roja}
+**Limitaciones**
+
+- **MNAR** no se puede verificar
+- Son **asociaciones**, no efectos causales
+- El **monto está acotado por el precio** (residuos asimétricos)
+:::
+:::
+:::
+
+:::
+
+::: notes
+En datos que el modelo nunca vio, el AUC es `r f3(auc_te)`, cercano al de entrenamiento (`r f3(auc_tr)`). Con 0,5 solo se detecta el `r round(100 * m05["Sensibilidad"])`&nbsp;% de los malos; con `r round(corte, 2)` subimos a `r round(100 * mk["Sensibilidad"])`&nbsp;% a cambio de algo de exactitud. Cerramos con tres conclusiones y tres limitaciones, y quedamos para preguntas.
+:::

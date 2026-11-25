@@ -34,7 +34,8 @@ Si Quarto no encuentra R, definir antes `QUARTO_R` con la ruta a `Rscript`. El d
 |---|---|
 | `TP_Final.qmd` | Documento principal (código + texto). |
 | `TP_Final_completo_backup.qmd` | Copia de seguridad de la versión completa (con Box-Cox, regresión robusta, calibración en test, validación cruzada, etc.), previa a la simplificación. |
-| `TP_Final.html` | Documento renderizado (índice lateral, código plegado); es el que se usa para exponer. |
+| `TP_Final.html` | Documento renderizado (índice lateral, código plegado). |
+| `presentacion.qmd` / `.html` | Diapositivas para la exposición de 15 minutos (revealjs). Toman el código de `TP_Final.qmd`: `quarto render presentacion.qmd`. |
 | `datos/credit_data_original.csv` | Dataset original, sin modificar. |
 | `datos/credit_procesado.rds` / `.csv` | Versión procesada (imputada, recodificada, con variables derivadas). |
 | `scripts/00_exportar_datos_originales.R` | Script que exportó el dataset original desde `modeldata`. |
