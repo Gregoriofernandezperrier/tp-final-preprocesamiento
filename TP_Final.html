@@ -4265,7 +4265,7 @@ window.Quarto = {
 </table>
 </div>
 </div>
-<p>La mediana asigna exactamente el mismo valor a los 381 casos (desvío 0). kNN da valores distintos según el perfil de cada persona, pero con <strong>menos dispersión</strong> que los observados (son “promedios de vecinos”): una limitación habitual de la imputación simple.</p>
+<p>La mediana asigna exactamente el mismo valor a los 381 casos (desvío 0). kNN da valores distintos según el perfil de cada persona, pero con <strong>menos dispersión</strong> que los observados (son “medianas de vecinos”): una limitación habitual de la imputación simple.</p>
 </section>
 </section>
 <section id="creación-de-variables-derivadas" class="level2" data-number="2.4">
@@ -5757,7 +5757,7 @@ Prediction bueno malo
 <section id="limitaciones" class="level2" data-number="7.2">
 <h2 data-number="7.2" class="anchored" data-anchor-id="limitaciones"><span class="header-section-number">7.2</span> Limitaciones</h2>
 <ul>
-<li><strong>Mecanismo de los faltantes:</strong> demostramos que no es MCAR y es plausible MAR, pero <strong>MNAR no puede verificarse</strong> con estos datos (por ejemplo, si quienes tienen ingresos muy bajos lo ocultan más). Además, kNN completa cada ingreso faltante con el promedio de sus 5 vecinos más parecidos, y los promedios varían menos que los datos reales, por lo que los ingresos imputados tienen menos dispersión que los observados. <code>Ingreso_faltante</code> es una señal útil para predecir, pero no explica <em>por qué</em> faltaba el dato.</li>
+<li><strong>Mecanismo de los faltantes:</strong> demostramos que no es MCAR y es plausible MAR, pero <strong>MNAR no puede verificarse</strong> con estos datos (por ejemplo, si quienes tienen ingresos muy bajos lo ocultan más). Además, kNN completa cada ingreso faltante con la mediana de sus 5 vecinos más parecidos, y las medianas varían menos que los datos reales, por lo que los ingresos imputados tienen menos dispersión que los observados. <code>Ingreso_faltante</code> es una señal útil para predecir, pero no explica <em>por qué</em> faltaba el dato.</li>
 <li><strong>Imputación en el lineal:</strong> la regresión lineal se ajusta con todos los datos y no tiene conjunto de prueba, así que imputar con todas las filas no genera fuga de información; en la logística sí se evitó (imputación de <code>test</code> con donantes de <code>train</code>).</li>
 <li><strong>Falta de contexto:</strong> la fuente no informa moneda, país, año ni cómo se define “mal pagador” o “antecedentes”. Los resultados describen esta muestra.</li>
 <li><strong>Relación no causal:</strong> son asociaciones observacionales.</li>

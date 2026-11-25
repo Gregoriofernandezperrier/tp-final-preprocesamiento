@@ -29,7 +29,7 @@
 
 ### 1.3 Imputación: media/mediana, kNN, mice
 - **Media/mediana:** reemplaza todos los NA por el mismo número. Rápido pero **subestima la variabilidad** y supone MCAR. En nuestro dato: los 381 ingresos imputados tendrían desvío 0.
-- **kNN (k vecinos más cercanos):** para cada fila con NA busca las **k = 5 filas más parecidas** (en las variables completas) y completa con su promedio (o moda si es categórica). Conserva mejor la estructura de los datos y funciona con numéricas y categóricas a la vez. Lo usamos (`VIM::kNN`). *Límite:* los valores imputados son "promedios de vecinos", con **menos dispersión** que los reales (desvío 38 vs. 81 de los observados).
+- **kNN (k vecinos más cercanos):** para cada fila con NA busca las **k = 5 filas más parecidas** (en las variables completas) y completa con su mediana (o moda si es categórica). Conserva mejor la estructura de los datos y funciona con numéricas y categóricas a la vez. Lo usamos (`VIM::kNN`). *Límite:* los valores imputados son "medianas de vecinos", con **menos dispersión** que los reales (desvío 38 vs. 81 de los observados).
 - **mice (imputación múltiple):** genera varios datasets completos (5 por defecto) con un modelo de regresión por variable y combina los resultados, reflejando la incertidumbre de imputar. Es una alternativa válida; **no la implementamos** para mantener el trabajo simple.
 - **`Ingreso_faltante`:** variable 0/1 que indica "el ingreso faltaba". La creamos **antes** de imputar, para no perder esa información. Es de las variables más llamativas de la logística (OR ≈ 4).
 
